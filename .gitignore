@@ -1,0 +1,12 @@
+node_modules/
+build/
+plugin/build/
+coverage/
+*.tgz
+.DS_Store
+android/.gradle/
+android/build/
+ios/build/
+example/node_modules/
+example/ios/
+example/android/

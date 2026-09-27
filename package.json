@@ -1,0 +1,119 @@
+{
+  "name": "react-native-sip-voice",
+  "version": "0.1.0",
+  "description": "Carrier-agnostic VoIP calling for React Native: SIP.js over WebSocket + react-native-webrtc audio, native CallKit (iOS) and ConnectionService (Android), and an optional WhatsApp-style call UI.",
+  "main": "build/index.js",
+  "types": "build/index.d.ts",
+  "react-native": "src/index.ts",
+  "source": "src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./build/index.d.ts",
+      "react-native": "./src/index.ts",
+      "default": "./build/index.js"
+    },
+    "./ui": {
+      "types": "./build/ui/index.d.ts",
+      "react-native": "./src/ui/index.ts",
+      "default": "./build/ui/index.js"
+    },
+    "./app.plugin.js": "./app.plugin.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "build",
+    "src",
+    "ios",
+    "android/src",
+    "android/build.gradle",
+    "plugin/build",
+    "app.plugin.js",
+    "expo-module.config.json",
+    "ios/ReactNativeSipVoice.podspec",
+    "!**/__tests__",
+    "!**/__mocks__"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && tsc -p plugin/tsconfig.json",
+    "clean": "rm -rf build plugin/build",
+    "typecheck": "tsc --noEmit && tsc -p plugin/tsconfig.json --noEmit",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "lint": "eslint src plugin/src __tests__",
+    "prepare": "npm run build"
+  },
+  "keywords": [
+    "react-native",
+    "expo",
+    "sip",
+    "sip.js",
+    "webrtc",
+    "voip",
+    "callkit",
+    "connectionservice",
+    "sbc",
+    "calling"
+  ],
+  "author": "Abrar Anwar",
+  "license": "MIT",
+  "homepage": "https://github.com/your-github-user/react-native-sip-voice#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/your-github-user/react-native-sip-voice.git"
+  },
+  "bugs": {
+    "url": "https://github.com/your-github-user/react-native-sip-voice/issues"
+  },
+  "dependencies": {
+    "sip.js": "^0.21.2"
+  },
+  "peerDependencies": {
+    "@expo/vector-icons": "*",
+    "expo": ">=53",
+    "expo-blur": "*",
+    "expo-image": "*",
+    "expo-linear-gradient": "*",
+    "react": "*",
+    "react-native": "*",
+    "react-native-safe-area-context": "*",
+    "react-native-webrtc": ">=118"
+  },
+  "peerDependenciesMeta": {
+    "@expo/vector-icons": {
+      "optional": true
+    },
+    "expo-blur": {
+      "optional": true
+    },
+    "expo-image": {
+      "optional": true
+    },
+    "expo-linear-gradient": {
+      "optional": true
+    },
+    "react-native-safe-area-context": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@expo/config-plugins": "^57.0.9",
+    "@expo/vector-icons": "^15.1.1",
+    "@react-native/jest-preset": "^0.86.3",
+    "@testing-library/react-native": "^14.0.1",
+    "@types/jest": "^30.0.0",
+    "@types/react": "~19.2.4",
+    "expo": "~57.0.24",
+    "expo-blur": "~57.0.3",
+    "expo-image": "~57.0.5",
+    "expo-linear-gradient": "~57.0.2",
+    "jest": "^30.5.2",
+    "jest-expo": "~57.0.5",
+    "react": "^19.2.3",
+    "react-native": "^0.86.3",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-webrtc": "^124.0.8",
+    "test-renderer": "^1.3.0",
+    "typescript": "~6.0.3"
+  }
+}
