@@ -16,7 +16,7 @@ class AndroidConfigRecord : Record {
 class NativeCallUIConfigRecord : Record {
   @Field var appName: String? = null
   @Field var ringtoneSound: String? = null
-  @Field var supportsHolding: Boolean = true
+  @Field var supportsHolding: Boolean = false
   @Field var android: AndroidConfigRecord? = null
 }
 

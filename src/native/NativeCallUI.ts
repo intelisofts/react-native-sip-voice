@@ -15,6 +15,10 @@ export interface NativeCallUIConfig {
   iconTemplateImageName?: string;
   /** Ringtone file bundled in the app (iOS: main bundle filename, Android: raw resource). */
   ringtoneSound?: string;
+  /**
+   * Let the OS put calls on hold (CallKit "Hold & Accept", Android hold). Default false: needs an SBC
+   * that handles hold re-INVITEs (sendonly/recvonly) end to end.
+   */
   supportsHolding?: boolean;
   supportsDTMF?: boolean;
   android?: {

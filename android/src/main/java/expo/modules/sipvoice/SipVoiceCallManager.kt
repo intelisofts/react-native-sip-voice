@@ -24,7 +24,8 @@ data class SipVoiceConfig(
   val channelName: String? = null,
   val notificationIcon: String? = null,
   val useConnectionService: Boolean = true,
-  val supportsHolding: Boolean = true
+  // Off by default: hold needs SBC support for re-INVITE (sendonly/recvonly).
+  val supportsHolding: Boolean = false
 )
 
 data class CallRecord(

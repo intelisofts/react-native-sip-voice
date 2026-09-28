@@ -77,7 +77,7 @@ describe("ActiveCallScreen", () => {
   });
 
   it("controls mute, speaker, hold and end", async () => {
-    const { call, session, onToggleSpeaker } = await renderScreen();
+    const { call, session, onToggleSpeaker } = await renderScreen({ showHold: true });
     await act(() => call.onAnswered());
 
     await fireEvent.press(screen.getByTestId("call-mute"));
@@ -98,10 +98,16 @@ describe("ActiveCallScreen", () => {
   });
 
   it("disables keypad and hold until answered", async () => {
-    await renderScreen();
+    await renderScreen({ showHold: true });
     expect(screen.getByTestId("call-keypad")).toBeDisabled();
     expect(screen.getByTestId("call-hold")).toBeDisabled();
     expect(screen.getByTestId("call-mute")).toBeEnabled();
+  });
+
+  it("hides the Hold button by default", async () => {
+    await renderScreen();
+    expect(screen.queryByTestId("call-hold")).toBeNull();
+    expect(screen.getByTestId("call-mute")).toBeTruthy();
   });
 
   it("opens the keypad and sends DTMF", async () => {

@@ -94,11 +94,11 @@ export class SipJsAdapter implements SignalingAdapter {
       },
       delegate: {
         onConnect: () => events.onConnectionStateChange(ConnectionState.CONNECTED),
-        onDisconnect: (error?: Error) =>
-          events.onConnectionStateChange(
-            error ? ConnectionState.ERROR : ConnectionState.DISCONNECTED,
-            error,
-          ),
+        onDisconnect: (error?: Error) => {
+          // SIP.js puts the WebSocket close code in the message, e.g. "WebSocket closed wss://… (code: 1006)".
+          if (error) this.log.warn("SBC connection lost:", error.message);
+          events.onConnectionStateChange(error ? ConnectionState.ERROR : ConnectionState.DISCONNECTED, error);
+        },
         onInvite: (invitation: Invitation) => this.handleInvite(invitation),
       },
     };
@@ -147,14 +147,16 @@ export class SipJsAdapter implements SignalingAdapter {
     const target = UserAgent.makeURI(request.targetUri);
     if (!target) throw new Error(`Invalid target URI ${request.targetUri}`);
 
+    // The SBC saves the INVITE's token for the call and requires the same one on every re-INVITE (hold/resume).
+    const tokenHeaders = tokenHeaderLines(this.credentials);
     const inviter = new Inviter(this.ua, target, {
-      extraHeaders: [...tokenHeaderLines(this.credentials), ...request.extraHeaders],
+      extraHeaders: [...tokenHeaders, ...request.extraHeaders],
       params: request.fromDisplayName ? { fromDisplayName: request.fromDisplayName } : undefined,
       sessionDescriptionHandlerOptions: { constraints: { audio: true, video: false } },
       earlyMedia: true,
     });
 
-    const session = new SipJsCallSession(inviter, events, request.dtmfMode, this.log);
+    const session = new SipJsCallSession(inviter, events, request.dtmfMode, this.log, tokenHeaders);
     inviter
       .invite({
         requestDelegate: {
@@ -162,7 +164,12 @@ export class SipJsAdapter implements SignalingAdapter {
             const code = response.message.statusCode;
             if (code === 180 || code === 183) events.onRinging();
           },
-          onReject: (response) => session.markRejected(response.message.statusCode),
+          onReject: (response) => {
+            const m = response.message;
+            const reason = m.getHeader("Reason");
+            this.log.info(`Call rejected ${m.statusCode} ${m.reasonPhrase}`, reason ? `Reason: ${reason}` : "");
+            session.markRejected(m.statusCode);
+          },
         },
       })
       .catch((error: unknown) => {
@@ -204,8 +211,18 @@ export class SipJsCallSession implements CallSession {
     private readonly events: CallSessionEvents,
     private readonly dtmfMode: DtmfMode,
     private readonly log: Logger,
+    /** Token header(s) of the call's original INVITE; re-sent unchanged on re-INVITEs. */
+    private readonly tokenHeaders: readonly string[] = [],
   ) {
     session.stateChange.addListener((state) => this.onStateChange(state));
+    session.delegate = {
+      ...session.delegate,
+      onBye: (bye) => {
+        const reason = bye.request.getHeader("Reason");
+        this.log.info("SBC ended the call (BYE)", this.sipCallId ?? "", reason ? `Reason: ${reason}` : "(no Reason header)");
+        bye.accept().catch(() => {});
+      },
+    };
   }
 
   get sipCallId(): string | undefined {
@@ -297,6 +314,10 @@ export class SipJsCallSession implements CallSession {
     return sdh?.peerConnection;
   }
 
+  /**
+   * Hold / resume with an in-dialog re-INVITE: the offer is `a=sendonly` to hold and `a=sendrecv` to resume.
+   * It carries the same token header as the original INVITE, which the SBC checks against the call.
+   */
   async setHold(hold: boolean): Promise<void> {
     if (this.session.state !== SessionState.Established) throw new Error("Call not established");
     const sdhOptions = { hold } as Web.SessionDescriptionHandlerOptions;
@@ -304,9 +325,14 @@ export class SipJsCallSession implements CallSession {
     await new Promise<void>((resolve, reject) => {
       this.session
         .invite({
+          requestOptions: { extraHeaders: [...this.tokenHeaders] },
           requestDelegate: {
             onAccept: () => resolve(),
-            onReject: () => reject(new Error(hold ? "Hold rejected" : "Resume rejected")),
+            onReject: (response) => {
+              const code = response.message.statusCode;
+              this.log.warn(`${hold ? "Hold" : "Resume"} re-INVITE rejected: ${code} ${response.message.reasonPhrase}`);
+              reject(new Error(`${hold ? "Hold" : "Resume"} rejected (${code})`));
+            },
           },
           sessionDescriptionHandlerOptions: sdhOptions,
         })

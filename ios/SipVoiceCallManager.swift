@@ -18,6 +18,8 @@ public final class SipVoiceCallManager: NSObject {
   }
 
   private(set) var provider: CXProvider?
+  /// Off by default: hold needs SBC support for re-INVITE (sendonly/recvonly), which many SBCs lack.
+  private var supportsHolding = false
   private let controller = CXCallController()
 
   private struct CallInfo {
@@ -40,9 +42,10 @@ public final class SipVoiceCallManager: NSObject {
     includesCallsInRecents: Bool = true,
     iconTemplateImageName: String? = nil,
     ringtoneSound: String? = nil,
-    supportsHolding: Bool = true,
+    supportsHolding: Bool = false,
     supportsDTMF: Bool = true
   ) {
+    self.supportsHolding = supportsHolding
     // Since iOS 14 CallKit always shows the app's bundle display name; `appName` only applies on Android.
     _ = appName
     let config = CXProviderConfiguration()
@@ -101,7 +104,7 @@ public final class SipVoiceCallManager: NSObject {
       update.localizedCallerName = displayName
       update.hasVideo = false
       update.supportsDTMF = true
-      update.supportsHolding = true
+      update.supportsHolding = self?.supportsHolding ?? false
       update.supportsGrouping = false
       update.supportsUngrouping = false
       self?.provider?.reportCall(with: uuid, updated: update)
@@ -132,7 +135,7 @@ public final class SipVoiceCallManager: NSObject {
       return
     }
     calls[uuid] = CallInfo(outgoing: false)
-    provider?.reportNewIncomingCall(with: uuid, update: Self.makeUpdate(handle: handle, name: displayName)) {
+    provider?.reportNewIncomingCall(with: uuid, update: makeUpdate(handle: handle, name: displayName)) {
       [weak self] error in
       if error != nil { self?.calls.removeValue(forKey: uuid) }
       completion(error)
@@ -153,7 +156,7 @@ public final class SipVoiceCallManager: NSObject {
     }
 
     calls[uuid] = CallInfo(outgoing: false)
-    provider?.reportNewIncomingCall(with: uuid, update: Self.makeUpdate(handle: callerNumber, name: callerName)) {
+    provider?.reportNewIncomingCall(with: uuid, update: makeUpdate(handle: callerNumber, name: callerName)) {
       [weak self] error in
       guard let self = self else {
         completion()
@@ -220,7 +223,7 @@ public final class SipVoiceCallManager: NSObject {
 
   func updateDisplay(callId: String, displayName: String, handle: String) {
     guard let uuid = UUID(uuidString: callId) else { return }
-    provider?.reportCall(with: uuid, updated: Self.makeUpdate(handle: handle, name: displayName))
+    provider?.reportCall(with: uuid, updated: makeUpdate(handle: handle, name: displayName))
   }
 
   // MARK: - Helpers
@@ -246,13 +249,13 @@ public final class SipVoiceCallManager: NSObject {
     return CXHandle(type: isNumber ? .phoneNumber : .generic, value: value)
   }
 
-  private static func makeUpdate(handle: String, name: String) -> CXCallUpdate {
+  private func makeUpdate(handle: String, name: String) -> CXCallUpdate {
     let update = CXCallUpdate()
-    update.remoteHandle = makeHandle(handle)
+    update.remoteHandle = Self.makeHandle(handle)
     update.localizedCallerName = name
     update.hasVideo = false
     update.supportsDTMF = true
-    update.supportsHolding = true
+    update.supportsHolding = supportsHolding
     update.supportsGrouping = false
     update.supportsUngrouping = false
     return update
@@ -308,6 +311,10 @@ extension SipVoiceCallManager: CXProviderDelegate {
   }
 
   public func provider(_ provider: CXProvider, perform action: CXSetHeldCallAction) {
+    guard supportsHolding else {
+      action.fail()
+      return
+    }
     calls[action.callUUID]?.held = action.isOnHold
     emit("setHeld", ["callId": Self.id(action.callUUID), "held": action.isOnHold])
     action.fulfill()

@@ -102,7 +102,8 @@ call.isOnHold;  call.isOnHold$
 await call.sendDtmf("1");      // 0-9 * # A-D, or several: "123#"
 ```
 
-- Hold sends a re-INVITE. If the far end rejects it, the promise rejects and the state is unchanged.
+- Hold sends a re-INVITE (sendonly, then sendrecv to resume) carrying the same token header as the call's original INVITE. If the far end rejects it, the promise rejects and the state is unchanged.
+- Your SBC and carrier must handle hold re-INVITEs end to end, so the UI hides Hold and CallKit/Android don't offer it unless you opt in with `showHold` and `supportsHolding: true`.
 - DTMF uses RTP (RFC 2833) when possible, otherwise SIP INFO (`application/dtmf-relay`). You can force a mode with `dtmfMode: "rfc2833" | "info"`. react-native-webrtc currently has no RTP DTMF sender, so `auto` ends up using INFO. Make sure your SBC accepts INFO DTMF.
 
 ## Timeouts

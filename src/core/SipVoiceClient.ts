@@ -407,6 +407,12 @@ export class SipVoiceClient {
   }
 
   private onCallTerminated(call: Call): void {
+    this.log.info(
+      `Call ended: ${call.endReason ?? "unknown"}` +
+        (call.statusCode ? ` (SIP ${call.statusCode})` : "") +
+        `, talked ${call.durationSeconds}s, connection ${this.connection.value}`,
+      call.sipCallId ?? "",
+    );
     this.emitter.emit("callEnded", call);
     const t = setTimeout(() => {
       this.timers.delete(t);

@@ -275,9 +275,40 @@ describe("SipJsAdapter.invite", () => {
     const ev = callEvents();
     adapter.invite({ targetUri: "sip:1@x", extraHeaders: [], dtmfMode: "auto" }, ev);
     const inviter = mockState.inviters[0];
-    inviter.inviteOptions.requestDelegate.onReject({ message: { statusCode: 486 } });
+    inviter.inviteOptions.requestDelegate.onReject({
+      message: { statusCode: 486, reasonPhrase: "Busy Here", getHeader: () => undefined },
+    });
     inviter.setState("Terminated");
     expect(ev.onEnded).toHaveBeenCalledWith("busy", 486);
+  });
+
+  it("accepts a remote BYE and logs the SBC's Reason header", async () => {
+    const logger = { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() };
+    const adapter = new SipJsAdapter({ logger });
+    await adapter.connect(digestCreds, events());
+    const ev = callEvents();
+    adapter.invite({ targetUri: "sip:1@x", extraHeaders: [], dtmfMode: "auto" }, ev);
+    const inviter = mockState.inviters[0];
+    inviter.setState("Established");
+    const bye = {
+      request: { getHeader: (n: string) => (n === "Reason" ? 'SIP;cause=200;text="max duration"' : undefined) },
+      accept: jest.fn(async () => {}),
+    };
+    inviter.delegate.onBye(bye);
+    expect(bye.accept).toHaveBeenCalled();
+    expect(logger.info).toHaveBeenCalledWith(
+      "SBC ended the call (BYE)", "call-id-123", 'Reason: SIP;cause=200;text="max duration"',
+    );
+  });
+
+  it("logs the WebSocket close code when the SBC connection drops", async () => {
+    const logger = { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() };
+    const adapter = new SipJsAdapter({ logger });
+    const ev = events();
+    await adapter.connect(digestCreds, ev);
+    mockState.uas[0].options.delegate.onDisconnect(new Error("WebSocket closed wss://x (code: 1006)"));
+    expect(logger.warn).toHaveBeenCalledWith("SBC connection lost:", "WebSocket closed wss://x (code: 1006)");
+    expect(ev.onConnectionStateChange).toHaveBeenLastCalledWith(ConnectionState.ERROR, expect.any(Error));
   });
 
   it("reports failure when sending the INVITE fails", async () => {
@@ -338,8 +369,32 @@ describe("SipJsAdapter.invite", () => {
     inviter.invite.mockImplementationOnce(async (opts: any) => opts.requestDelegate.onAccept());
     await s.setHold(true);
     expect(inviter.sessionDescriptionHandlerOptionsReInvite).toEqual({ hold: true });
-    inviter.invite.mockImplementationOnce(async (opts: any) => opts.requestDelegate.onReject());
-    await expect(s.setHold(false)).rejects.toThrow("Resume rejected");
+    inviter.invite.mockImplementationOnce(async (opts: any) =>
+      opts.requestDelegate.onReject({ message: { statusCode: 403, reasonPhrase: "Forbidden" } }),
+    );
+    await expect(s.setHold(false)).rejects.toThrow("Resume rejected (403)");
+  });
+
+  it("re-INVITEs for hold and resume carry the original INVITE's token", async () => {
+    const adapter = await connected(tokenCreds);
+    const s = adapter.invite(
+      { targetUri: "sip:1@x", extraHeaders: ["X-Client-State: abc"], dtmfMode: "auto" },
+      callEvents(),
+    );
+    const inviter = mockState.inviters[0];
+    const tokenLine = tokenHeaderLines(tokenCreds)[0];
+    expect(inviter.options.extraHeaders).toEqual([tokenLine, "X-Client-State: abc"]);
+
+    inviter.setState("Established");
+    const reInvites: any[] = [];
+    inviter.invite.mockImplementation(async (opts: any) => {
+      reInvites.push(opts);
+      opts.requestDelegate.onAccept();
+    });
+    await s.setHold(true);
+    await s.setHold(false);
+    expect(reInvites.map((o) => o.requestOptions.extraHeaders)).toEqual([[tokenLine], [tokenLine]]);
+    expect(reInvites.map((o) => o.sessionDescriptionHandlerOptions)).toEqual([{ hold: true }, { hold: false }]);
   });
 
   it("sends DTMF via RTP when possible, else SIP INFO", async () => {

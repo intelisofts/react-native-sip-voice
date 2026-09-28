@@ -33,6 +33,8 @@ export interface ActiveCallScreenProps {
   /** Show the landmark credit line (required by most Creative Commons licences). Default true. */
   showAttribution?: boolean;
   blurRadius?: number;
+  /** Show the Hold button. Default false; hold needs SBC support for re-INVITE (sendonly/recvonly). */
+  showHold?: boolean;
 }
 
 export function ActiveCallScreen({
@@ -48,6 +50,7 @@ export function ActiveCallScreen({
   labels = defaultLabels,
   showAttribution = true,
   blurRadius,
+  showHold = false,
 }: ActiveCallScreenProps) {
   const insets = useSafeAreaInsets();
   const { state, isMuted, isOnHold } = useCallState(call);
@@ -160,15 +163,17 @@ export function ActiveCallScreen({
               disabled={!inCall}
               theme={theme}
             />
-            <ControlButton
-              testID="call-hold"
-              icon={isOnHold ? "play" : "pause"}
-              label={isOnHold ? labels.resume : labels.hold}
-              active={isOnHold}
-              onPress={() => call.toggleHold().catch(() => {})}
-              disabled={!inCall}
-              theme={theme}
-            />
+            {showHold && (
+              <ControlButton
+                testID="call-hold"
+                icon={isOnHold ? "play" : "pause"}
+                label={isOnHold ? labels.resume : labels.hold}
+                active={isOnHold}
+                onPress={() => call.toggleHold().catch(() => {})}
+                disabled={!inCall}
+                theme={theme}
+              />
+            )}
           </View>
           <View style={styles.endRow}>
             <ControlButton

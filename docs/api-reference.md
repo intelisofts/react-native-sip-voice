@@ -141,7 +141,7 @@ Events: `answerCall`, `endCall`, `setMuted`, `setHeld`, `playDTMF`, `startCall`,
 | Export | |
 |---|---|
 | `CallOverlay` | see [UI](ui.md#all-props) |
-| `ActiveCallScreen` | `call`, `displayName`, `phoneNumber?`, `landmark`, `isSpeakerOn`, `onToggleSpeaker`, `onMinimize?`, `subtitle?`, `theme?`, `labels?`, `showAttribution?`, `blurRadius?` |
+| `ActiveCallScreen` | `call`, `displayName`, `phoneNumber?`, `landmark`, `isSpeakerOn`, `onToggleSpeaker`, `onMinimize?`, `subtitle?`, `theme?`, `labels?`, `showAttribution?`, `blurRadius?`, `showHold?` (default false) |
 | `IncomingCallScreen` | `call`, `displayName`, `landmark`, `theme?`, `labels?` |
 | `MinimizedCallBanner` | `call`, `displayName`, `onPress`, `theme?`, `labels?` |
 | `DialPad` | `onPress(digit)`, `entered?`, `theme?` |

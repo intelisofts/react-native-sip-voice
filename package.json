@@ -57,6 +57,10 @@
   ],
   "author": "Abrar Anwar",
   "license": "MIT",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "homepage": "https://github.com/your-github-user/react-native-sip-voice#readme",
   "repository": {
     "type": "git",

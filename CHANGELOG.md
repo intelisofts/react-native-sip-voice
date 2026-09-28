@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Hold/resume re-INVITEs carry the same token header as the call's original INVITE (SBCs that bind a token to the call check it); rejections log the status code.
+- Hold is now opt-in (`showHold` on `ActiveCallScreen`/`CallOverlay`, `supportsHolding` in native config, both default false). It sends re-INVITEs (sendonly/recvonly), which many SBCs don't handle; CallKit no longer offers "Hold & Accept" by default.
 - Credentials are never kept past a session: `disconnect()` and giving up on reconnects forget them.
 - Hanging up sends BYE/CANCEL best-effort without waiting for a reply, and `disconnect()` closes the WebSocket immediately (no un-REGISTER or BYE round trips); the SBC ends dialogs when the socket closes.
 - `newCall()` on a disconnected client connects only via `credentialsProvider` (fresh credentials) and otherwise throws, instead of re-using the last credentials.

@@ -36,6 +36,8 @@ export interface CallOverlayProps {
   /** Render a custom full-screen UI instead of the built-in one. */
   renderActiveCall?: (props: { call: Call; displayName: string; minimize: () => void }) => React.ReactNode;
   blurRadius?: number;
+  /** Show the Hold button on the call screen. Default false (needs SBC re-INVITE hold support). */
+  showHold?: boolean;
   /**
    * A call your app is still setting up (permission / price checks, connecting). Shows the call screen
    * immediately; when the real call starts it takes over inside the same screen. Ignored while a call exists.
@@ -63,6 +65,7 @@ export function CallOverlay({
   showIncomingScreen = true,
   renderActiveCall,
   blurRadius,
+  showHold,
   preparing: preparingProp,
 }: CallOverlayProps) {
   const call = useActiveCall();
@@ -141,6 +144,7 @@ export function CallOverlay({
         theme={theme}
         labels={labels}
         blurRadius={blurRadius}
+        showHold={showHold}
       />
     );
   }

@@ -75,7 +75,9 @@ class SipVoiceConnection(val callId: String) : Connection() {
   init {
     connectionProperties = PROPERTY_SELF_MANAGED
     audioModeIsVoip = true
-    connectionCapabilities = CAPABILITY_MUTE or CAPABILITY_SUPPORT_HOLD or CAPABILITY_HOLD
+    connectionCapabilities =
+      if (SipVoiceCallManager.config.supportsHolding) CAPABILITY_MUTE or CAPABILITY_SUPPORT_HOLD or CAPABILITY_HOLD
+      else CAPABILITY_MUTE
   }
 
   fun callAudioStateCompat(): CallAudioState? = lastAudioState
@@ -98,12 +100,14 @@ class SipVoiceConnection(val callId: String) : Connection() {
   override fun onAbort() = SipVoiceCallManager.onSystemEnd(callId)
 
   override fun onHold() {
+    if (!SipVoiceCallManager.config.supportsHolding) return
     setOnHold()
     SipVoiceCallManager.calls[callId]?.held = true
     SipVoiceCallManager.emit("setHeld", mapOf("callId" to callId, "held" to true))
   }
 
   override fun onUnhold() {
+    if (!SipVoiceCallManager.config.supportsHolding) return
     setActive()
     SipVoiceCallManager.calls[callId]?.held = false
     SipVoiceCallManager.emit("setHeld", mapOf("callId" to callId, "held" to false))

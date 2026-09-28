@@ -5,7 +5,7 @@ struct NativeCallUIConfigRecord: Record {
   @Field var includesCallsInRecents: Bool = true
   @Field var iconTemplateImageName: String?
   @Field var ringtoneSound: String?
-  @Field var supportsHolding: Bool = true
+  @Field var supportsHolding: Bool = false
   @Field var supportsDTMF: Bool = true
 }
 
