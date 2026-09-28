@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Credentials are never kept past a session: `disconnect()` and giving up on reconnects forget them.
+- Hanging up sends BYE/CANCEL best-effort without waiting for a reply, and `disconnect()` closes the WebSocket immediately (no un-REGISTER or BYE round trips); the SBC ends dialogs when the socket closes.
+- `newCall()` on a disconnected client connects only via `credentialsProvider` (fresh credentials) and otherwise throws, instead of re-using the last credentials.
+
 ## 0.1.0
 
 First release.

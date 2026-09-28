@@ -34,6 +34,15 @@ new SipVoiceClient({ debug: true });
 - **iOS:** make sure the plugin ran (`UIBackgroundModes` contains `voip` and `audio`) and that `nativeCallUI` isn't disabled.
 - **Android:** the foreground service must start while the app is visible. Check logcat for `SipVoiceFgs`. On MIUI and ColorOS, disable battery optimisation for the app.
 
+## Call keeps running on the SBC after the app hung up
+
+On hangup the client fires BYE (answered) or CANCEL (ringing) without waiting for a reply, and `disconnect()` closes the WebSocket immediately. The SBC must end the call itself:
+
+- **End dialogs when their WebSocket closes.** This is the main hangup signal: a CANCEL can't be sent before the SBC's first provisional response, and a killed app or lost network sends nothing.
+- **Set an RTP inactivity timeout (30–60 s)** as a backstop.
+- **Don't require client-side session timers.** SIP.js doesn't refresh `Session-Expires`; the SBC can be the refresher.
+- **Bill from the SBC's CDR**, not from the app.
+
 ## CallKit doesn't show my app name
 
 Since iOS 14, CallKit always uses the app's **bundle display name** (`CFBundleDisplayName`). `nativeConfig.appName` only affects Android.

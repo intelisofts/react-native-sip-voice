@@ -79,6 +79,40 @@ describe("SipVoiceClient connection", () => {
     expect(client.currentConnectionState).toBe(ConnectionState.DISCONNECTED);
   });
 
+  it("forgets credentials on disconnect: no silent re-login with an old token", async () => {
+    const { client, adapter } = setup();
+    await client.connect(tokenCreds);
+    await client.disconnect();
+    await expect(client.newCall({ destination: "+447700900123" })).rejects.toThrow("Not connected to SBC");
+    adapter.connected = false;
+    await client.handleNetworkChange();
+    expect(adapter.connect).toHaveBeenCalledTimes(1);
+    expect(adapter.reconnect).not.toHaveBeenCalled();
+  });
+
+  it("newCall asks the provider for fresh credentials each time it has to connect", async () => {
+    let n = 0;
+    const provider = jest.fn(async () => ({ ...tokenCreds, token: `t${++n}` }));
+    const { client, adapter } = setup({ credentialsProvider: provider });
+    await client.newCall({ destination: "+447700900123" });
+    await client.disconnect();
+    await client.newCall({ destination: "+447700900123" });
+    expect(provider).toHaveBeenCalledTimes(2);
+    expect(adapter.lastCredentials).toMatchObject({ token: "t2" });
+  });
+
+  it("disconnect right after a hangup closes the transport without waiting for the SBC", async () => {
+    const { client, adapter } = setup();
+    await client.connect(digestCreds);
+    const call = await client.newCall({ destination: "+447700900123" });
+    adapter.lastInvite.session.hangup.mockImplementationOnce(() => new Promise<void>(() => {})); // no reply ever
+    void call.hangup();
+    expect(call.currentState).toBe(CallState.ENDED);
+    await client.disconnect();
+    expect(adapter.disconnect).toHaveBeenCalledTimes(1);
+    expect(client.currentConnectionState).toBe(ConnectionState.DISCONNECTED);
+  });
+
   it("logout is an alias for disconnect", async () => {
     const { client, adapter } = setup();
     await client.connect(digestCreds);

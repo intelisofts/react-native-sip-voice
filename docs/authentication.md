@@ -107,17 +107,26 @@ async function startCall(number: string) {
 }
 ```
 
-## Token expiry
+## Token lifetime and per-call tokens
 
-- An existing WebSocket stays open after the token expires, because the SBC only checks the token on requests.
-- New calls reuse the connection. If your SBC rejects expired tokens on INVITE, reconnect with a fresh token before dialling:
+- The client never keeps credentials past a session. `disconnect()` (and giving up after failed reconnects) forgets them, so the next `connect()` must be given fresh credentials, or fetch them from the `credentialsProvider`.
+- `newCall()` on a disconnected client connects only through the `credentialsProvider`; without one it throws `Not connected to SBC`. It never re-logs in with old credentials.
+- An open WebSocket stays open after the token expires, because the SBC only checks the token on requests.
+- If your backend issues a **token per call** (valid for one call only), start a fresh session for every call and close it when the call ends:
 
 ```ts
-await voice.disconnect();
-await voice.connect(); // provider fetches a fresh token
+async function call(number: string) {
+  const permission = await api.permissions(number); // single-use token for this call
+  await voice.disconnect();                          // drop any previous session
+  await voice.connect(toCredentials(permission));
+  const c = await voice.newCall({ destination: number });
+  c.callState$.subscribe((s) => {
+    if (s === CallState.ENDED || s === CallState.FAILED) void voice.disconnect();
+  });
+}
 ```
 
-- Automatic reconnects after a network drop reuse the same transport and credentials. If they keep failing, the client ends up in `ConnectionState.ERROR`. Calling `connect()` again then fetches new credentials.
+- Automatic reconnects after a network drop during a call reuse the current session's credentials. If they keep failing, the client ends in `ConnectionState.ERROR` and forgets the credentials.
 
 ## Security checklist
 

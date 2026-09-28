@@ -23,6 +23,9 @@ jest.mock("sip.js", () => {
     addListener(fn: (s: string) => void) {
       this.listeners.push(fn);
     }
+    removeListener(fn: (s: string) => void) {
+      this.listeners = this.listeners.filter((l) => l !== fn);
+    }
     emit(s: string) {
       this.listeners.forEach((l) => l(s));
     }
@@ -70,7 +73,7 @@ jest.mock("sip.js", () => {
       };
     }
     accept = jest.fn(async () => {});
-    reject = jest.fn(async () => {});
+    reject = jest.fn(async (_opts?: any) => this.setState("Terminated"));
   }
   class UserAgent {
     static makeURI(s: string) {
@@ -83,6 +86,7 @@ jest.mock("sip.js", () => {
     }
     start = jest.fn(async () => this.options.delegate.onConnect());
     stop = jest.fn(async () => {});
+    transport = { disconnect: jest.fn(async () => {}) };
     reconnect = jest.fn(async () => {});
     isConnected = jest.fn(() => true);
   }
@@ -193,16 +197,23 @@ describe("SipJsAdapter.connect", () => {
     );
   });
 
-  it("reconnects and re-registers; disconnect unregisters and stops", async () => {
+  it("reconnects and re-registers; disconnect closes the WebSocket at once, then stops the UA", async () => {
     const adapter = new SipJsAdapter();
     await adapter.connect({ ...digestCreds, register: true }, events());
     await adapter.reconnect();
     expect(mockState.uas[0].reconnect).toHaveBeenCalled();
     expect(mockState.registerers[0].register).toHaveBeenCalledTimes(2);
-    await adapter.disconnect();
-    expect(mockState.registerers[0].unregister).toHaveBeenCalled();
-    expect(mockState.uas[0].stop).toHaveBeenCalled();
+    const ua = mockState.uas[0];
+    let closed!: () => void;
+    ua.transport.disconnect.mockImplementationOnce(() => new Promise<void>((r) => (closed = r)));
+    await adapter.disconnect(); // returns without waiting for the socket or the SBC
+    expect(ua.transport.disconnect).toHaveBeenCalled();
+    expect(mockState.registerers[0].unregister).not.toHaveBeenCalled(); // no un-REGISTER round trip
     expect(adapter.isConnected()).toBe(false);
+    expect(ua.stop).not.toHaveBeenCalled();
+    closed();
+    await new Promise((r) => setImmediate(r));
+    expect(ua.stop).toHaveBeenCalled();
     await expect(adapter.reconnect()).rejects.toThrow("Not connected");
   });
 });
@@ -293,6 +304,16 @@ describe("SipJsAdapter.invite", () => {
     await s2.hangup();
     expect(mockState.inviters[1].bye).toHaveBeenCalled();
     expect(ev2.onEnded).toHaveBeenCalledWith("local_hangup", undefined);
+  });
+
+  it("hangup sends BYE/CANCEL without waiting for the SBC to answer", async () => {
+    const adapter = await connected();
+    const s = adapter.invite({ targetUri: "sip:1@x", extraHeaders: [], dtmfMode: "auto" }, callEvents());
+    const inviter = mockState.inviters[0];
+    inviter.setState("Established");
+    inviter.bye.mockImplementationOnce(() => new Promise(() => {})); // SBC never replies
+    await s.hangup(); // must still resolve
+    expect(inviter.bye).toHaveBeenCalled();
   });
 
   it("mutes audio senders, including after establishment", async () => {

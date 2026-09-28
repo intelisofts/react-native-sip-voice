@@ -41,7 +41,7 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "lint": "eslint src plugin/src __tests__",
-    "prepare": "npm run build"
+    "prepack": "npm run build"
   },
   "keywords": [
     "react-native",

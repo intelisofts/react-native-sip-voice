@@ -127,16 +127,20 @@ export class SipJsAdapter implements SignalingAdapter {
     if (this.registerer) await this.registerer.register();
   }
 
+  /**
+   * Closes the WebSocket immediately. The user agent is stopped afterwards in the background; with the
+   * transport already down it sends nothing (no un-REGISTER, no BYE) and waits for nothing.
+   */
   async disconnect(): Promise<void> {
     const ua = this.ua;
     this.ua = undefined;
-    try {
-      if (this.registerer) await this.registerer.unregister().catch(() => {});
-    } finally {
-      this.registerer = undefined;
-      await ua?.stop().catch(() => {});
-    }
+    this.registerer = undefined;
+    this.credentials = undefined;
+    if (!ua) return;
+    const closing = ua.transport.disconnect().catch((e) => this.log.debug("Transport close failed", e));
+    void closing.finally(() => ua.stop().catch(() => {}));
   }
+
 
   invite(request: OutgoingInviteRequest, events: CallSessionEvents): CallSession {
     if (!this.ua || !this.credentials) throw new Error("Not connected to SBC");
@@ -238,17 +242,22 @@ export class SipJsCallSession implements CallSession {
     return "failed";
   }
 
+  /**
+   * Best-effort BYE (answered) / CANCEL (ringing) / reject (incoming), sent without waiting for the SBC's
+   * reply; the app closes the WebSocket right after and the SBC ends the dialog when the socket closes.
+   */
   async hangup(): Promise<void> {
     this.localHangup = true;
     const s = this.session;
+    const ignore = (e: unknown) => this.log.debug("Hangup signalling not sent", e);
     switch (s.state) {
       case SessionState.Initial:
       case SessionState.Establishing:
-        if (s instanceof Inviter) await s.cancel();
-        else if (s instanceof Invitation) await s.reject();
+        if (s instanceof Inviter) void s.cancel().catch(ignore);
+        else if (s instanceof Invitation) void s.reject().catch(ignore);
         break;
       case SessionState.Established:
-        await s.bye();
+        void s.bye().catch(ignore);
         break;
       default:
         break;

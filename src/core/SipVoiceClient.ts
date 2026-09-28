@@ -188,6 +188,8 @@ export class SipVoiceClient {
     this.intentionalDisconnect = true;
     this.clearReconnect();
     await Promise.all(this.liveCalls().map((c) => c.hangup()));
+    // Credentials (often short-lived tokens) are never kept past a session; the next connect() must supply fresh ones.
+    this.credentials = undefined;
     await this.adapter.disconnect();
     this.connection.next(ConnectionState.DISCONNECTED);
   }
@@ -225,6 +227,7 @@ export class SipVoiceClient {
       this.log.warn("Giving up reconnecting");
       this.connection.next(ConnectionState.ERROR);
       this.liveCalls().forEach((c) => c.onEnded("network_error"));
+      this.credentials = undefined;
       this.emitter.emit("error", new Error("Lost connection to SBC"));
       return;
     }
@@ -263,13 +266,15 @@ export class SipVoiceClient {
   // ---- Calls -------------------------------------------------------------
 
   /**
-   * Place an outgoing call. Connects first when needed and a credentials provider is configured.
+   * Place an outgoing call. When not connected, connects first with fresh credentials from the
+   * `credentialsProvider`; without one it throws.
    */
   async newCall(options: NewCallOptions): Promise<Call> {
     if (!options.destination?.trim()) throw new Error("destination is required");
     if (!this.isConnected) {
       if (this.connection.value === ConnectionState.CONNECTING && this.connectPromise) await this.connectPromise;
-      else if (this.credentialsProvider || this.credentials) await this.connect(this.credentialsProvider ? undefined : this.credentials);
+      // Only a provider can supply fresh credentials; previous ones are never reused.
+      else if (this.credentialsProvider) await this.connect();
       else throw new Error("Not connected to SBC");
     }
     const creds = this.credentials!;
