@@ -194,7 +194,7 @@ export class SipVoiceClient {
     this.connection.next(ConnectionState.DISCONNECTED);
   }
 
-  /** Alias kept for parity with the Telnyx SDK API. */
+  /** Alias of {@link disconnect}. */
   logout(): Promise<void> {
     return this.disconnect();
   }

@@ -1,6 +1,6 @@
 {
   "name": "react-native-sip-voice",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Carrier-agnostic VoIP calling for React Native: SIP.js over WebSocket + react-native-webrtc audio, native CallKit (iOS) and ConnectionService (Android), and an optional WhatsApp-style call UI.",
   "main": "build/index.js",
   "types": "build/index.d.ts",

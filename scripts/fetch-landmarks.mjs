@@ -57,6 +57,7 @@ const L = [
 ["234","NG","Nigeria","Zuma Rock","Niger State","Zuma_Rock"],
 ["249","SD","Sudan","Pyramids of Meroë","Meroë","Meroë"],
 ["251","ET","Ethiopia","Church of Saint George","Lalibela","Church_of_Saint_George,_Lalibela"],
+["291","ER","Eritrea","Fiat Tagliero Building","Asmara","Fiat_Tagliero_Building"],
 ["254","KE","Kenya","Maasai Mara","Narok","Maasai_Mara"],
 ["255","TZ","Tanzania","Mount Kilimanjaro","Kilimanjaro","Mount_Kilimanjaro"],
 ["256","UG","Uganda","Murchison Falls","Nwoya","Murchison_Falls"],

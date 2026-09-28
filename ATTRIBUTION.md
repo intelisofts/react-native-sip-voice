@@ -61,6 +61,7 @@ The call screen shows a photo of a well-known landmark in the destination countr
 | Nigeria | Zuma Rock | Jeff Attaway | CC BY 2.0 | [file page](https://commons.wikimedia.org/wiki/File:Zuma_Rock.jpg) |
 | Sudan | Pyramids of Meroë | Wufei07 | Public domain | [file page](https://commons.wikimedia.org/wiki/File:NubianMeroePyramids30sep2005(2).jpg) |
 | Ethiopia | Church of Saint George | Sailko | CC BY 3.0 | [file page](https://commons.wikimedia.org/wiki/File:Lalibela,_san_giorgio,_esterno_24.jpg) |
+| Eritrea | Fiat Tagliero Building | sailko | CC BY-SA 3.0 | [file page](https://commons.wikimedia.org/wiki/File:Fiat_tagliero,_08.JPG) |
 | Kenya | Maasai Mara | Danijel Mihajlovic | CC BY-SA 4.0 | [file page](https://commons.wikimedia.org/wiki/File:Masai_Mara_at_Sunset.jpg) |
 | Tanzania | Mount Kilimanjaro | Sergey Pesterev | CC BY-SA 4.0 | [file page](https://commons.wikimedia.org/wiki/File:Kilimanjaro_from_Amboseli.jpg) |
 | Uganda | Murchison Falls | Rod Waddington | CC BY-SA 2.0 | [file page](https://commons.wikimedia.org/wiki/File:Murchison_Twin_Falls,_Uganda_(16093084916).jpg) |

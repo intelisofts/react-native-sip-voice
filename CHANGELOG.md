@@ -1,6 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.2.1
+
+- Active call screen: the destination, status and timer sit on a frosted translucent panel so they stay readable over any landmark photo. Larger, bolder text: the number (36, or 26 under a contact name), the call stage in words ("Calling…", "Ringing…", "Connected" with a green dot, "On hold", "Call ended"; 24) and the timer on its own line (46).
+- `callPhase()` (exported from `/ui`): the call stage without the timer; new optional `connected` label (default "Connected").
+- Landmarks: Eritrea (+291), Fiat Tagliero Building in Asmara.
+
+## 0.2.0
 
 - Hold/resume re-INVITEs carry the same token header as the call's original INVITE (SBCs that bind a token to the call check it); rejections log the status code.
 - Hold is now opt-in (`showHold` on `ActiveCallScreen`/`CallOverlay`, `supportsHolding` in native config, both default false). It sends re-INVITEs (sendonly/recvonly), which many SBCs don't handle; CallKit no longer offers "Hold & Accept" by default.

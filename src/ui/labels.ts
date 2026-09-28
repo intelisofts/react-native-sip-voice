@@ -7,6 +7,8 @@ export interface CallLabels {
   connecting: string;
   reconnecting: string;
   onHold: string;
+  /** Status once answered, shown above the timer. Optional so existing custom label sets keep working. */
+  connected?: string;
   ended: string;
   failed: string;
   incoming: string;
@@ -28,6 +30,7 @@ export const defaultLabels: CallLabels = {
   connecting: "Connecting…",
   reconnecting: "Reconnecting…",
   onHold: "On hold",
+  connected: "Connected",
   ended: "Call ended",
   failed: "Call failed",
   incoming: "Incoming voice call",
@@ -42,6 +45,29 @@ export const defaultLabels: CallLabels = {
   accept: "Accept",
   decline: "Decline",
 };
+
+/** The call's stage as a word ("Ringing…", "Connected", "On hold"…), without the timer. */
+export function callPhase(state: CallState | null, opts: { incoming?: boolean; labels?: CallLabels } = {}): string {
+  const l = opts.labels ?? defaultLabels;
+  switch (state) {
+    case CallState.CONNECTING:
+      return opts.incoming ? l.connecting : l.calling;
+    case CallState.RINGING:
+      return opts.incoming ? l.incoming : l.ringing;
+    case CallState.ACTIVE:
+      return l.connected ?? defaultLabels.connected!;
+    case CallState.HELD:
+      return l.onHold;
+    case CallState.RECONNECTING:
+      return l.reconnecting;
+    case CallState.ENDED:
+      return l.ended;
+    case CallState.FAILED:
+      return l.failed;
+    default:
+      return "";
+  }
+}
 
 /** Human status line for the call screen, e.g. "Ringing…" or "02:13". */
 export function statusText(

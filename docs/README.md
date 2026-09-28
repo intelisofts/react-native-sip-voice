@@ -13,4 +13,3 @@
 | [API reference](api-reference.md) | Every export, with its signature |
 | [Testing your app](testing.md) | Faking the SIP layer and native bridge in Jest |
 | [Troubleshooting](troubleshooting.md) | No audio, one-way audio, calls that won't connect, and CallKit quirks |
-| [Migrating from Telnyx](migrating-from-telnyx.md) | API mapping from `@telnyx/react-voice-commons-sdk` |

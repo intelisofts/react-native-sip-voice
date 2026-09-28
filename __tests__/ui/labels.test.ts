@@ -1,5 +1,5 @@
 import { CallState } from "../../src/core/types";
-import { defaultLabels, initials, statusText } from "../../src/ui/labels";
+import { callPhase, defaultLabels, initials, statusText } from "../../src/ui/labels";
 import { defaultCallUITheme, mergeTheme } from "../../src/ui/theme";
 
 describe("statusText", () => {
@@ -42,5 +42,25 @@ describe("theme", () => {
     expect(t.accent).toBe("#123456");
     expect(t.danger).toBe(defaultCallUITheme.danger);
     expect(mergeTheme()).toEqual(defaultCallUITheme);
+  });
+});
+
+describe("callPhase", () => {
+  it.each([
+    [CallState.CONNECTING, false, "Calling…"],
+    [CallState.RINGING, false, "Ringing…"],
+    [CallState.ACTIVE, false, "Connected"],
+    [CallState.HELD, false, "On hold"],
+    [CallState.RECONNECTING, false, "Reconnecting…"],
+    [CallState.ENDED, false, "Call ended"],
+    [CallState.FAILED, false, "Call failed"],
+    [CallState.RINGING, true, "Incoming voice call"],
+  ])("%s (incoming %s) → %s", (state, incoming, text) => {
+    expect(callPhase(state, { incoming })).toBe(text);
+  });
+
+  it("falls back to the default 'Connected' for custom label sets without it", () => {
+    const { connected, ...older } = defaultLabels;
+    expect(callPhase(CallState.ACTIVE, { labels: older as typeof defaultLabels })).toBe("Connected");
   });
 });

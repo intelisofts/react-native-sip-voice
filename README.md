@@ -27,7 +27,7 @@ Carrier-agnostic voice calling for React Native and Expo. Bring your own SBC.
 
 Full guides with copy-paste examples live in [`docs/`](docs/README.md):
 
-[Getting started](docs/getting-started.md) · [Authentication](docs/authentication.md) · [Calls](docs/calls.md) · [Hooks](docs/hooks.md) · [Built-in UI](docs/ui.md) · [Native integration](docs/native.md) · [Incoming calls & push](docs/incoming-calls.md) · [SBC setup](docs/sbc-setup.md) · [API reference](docs/api-reference.md) · [Testing](docs/testing.md) · [Troubleshooting](docs/troubleshooting.md) · [Migrating from Telnyx](docs/migrating-from-telnyx.md)
+[Getting started](docs/getting-started.md) · [Authentication](docs/authentication.md) · [Calls](docs/calls.md) · [Hooks](docs/hooks.md) · [Built-in UI](docs/ui.md) · [Native integration](docs/native.md) · [Incoming calls & push](docs/incoming-calls.md) · [SBC setup](docs/sbc-setup.md) · [API reference](docs/api-reference.md) · [Testing](docs/testing.md) · [Troubleshooting](docs/troubleshooting.md)
 
 ## Requirements
 

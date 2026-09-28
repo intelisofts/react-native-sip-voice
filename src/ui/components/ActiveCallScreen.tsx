@@ -1,13 +1,14 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { BlurView } from "expo-blur";
 import { useCallback, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import type { Call } from "../../core/Call";
 import { CallState } from "../../core/types";
 import { useCallDuration, useCallState } from "../../react/hooks";
-import { CallLabels, defaultLabels, statusText } from "../labels";
+import { callPhase, CallLabels, defaultLabels } from "../labels";
+import { formatDuration } from "../../core/utils";
 import type { Landmark } from "../landmarks/resolver";
 import { CallUITheme, defaultCallUITheme } from "../theme";
 import { Avatar } from "./Avatar";
@@ -62,7 +63,17 @@ export function ActiveCallScreen({
   const live = state !== CallState.ENDED && state !== CallState.FAILED;
   const inCall = state === CallState.ACTIVE || state === CallState.HELD;
   const pulsing = state === CallState.CONNECTING || state === CallState.RINGING || state === CallState.RECONNECTING;
-  const status = statusText(state, duration, { incoming: call.isIncoming, labels });
+  // Stage in words (Calling… / Ringing… / Connected / On hold / Call ended), with the timer on its own line.
+  const phase = callPhase(state, { incoming: call.isIncoming, labels });
+  const showsTimer = inCall || (state === CallState.ENDED && duration > 0);
+  const phaseColor =
+    state === CallState.FAILED
+      ? theme.danger
+      : state === CallState.ACTIVE
+        ? "#4ADE80"
+        : state === CallState.HELD || state === CallState.RECONNECTING
+          ? "#FBBF24"
+          : theme.text;
 
   const onDigit = useCallback(
     (digit: string) => {
@@ -108,25 +119,38 @@ export function ActiveCallScreen({
           <View style={styles.topButton} />
         </View>
 
-        {/* Identity */}
+        {/* Identity: text sits on a frosted panel so it stays readable over any photo and as it fades. */}
         <View style={styles.identity}>
           {!keypadOpen && <Avatar name={displayName} pulsing={pulsing} textColor={theme.text} />}
-          <Text style={[styles.name, { color: theme.text, fontFamily: theme.fontFamily }]} numberOfLines={1} testID="call-name">
-            {displayName}
-          </Text>
-          {displayName !== number && (
-            <Text style={[styles.number, { color: theme.textSecondary }]} numberOfLines={1} testID="call-number">
-              {number}
+          <BlurView intensity={30} tint="dark" style={styles.identityPanel} testID="call-identity-panel">
+            {/* The destination leads: contact name, or the number itself when unknown. */}
+            <Text
+              style={[displayName === number ? styles.numberTitle : styles.name, { color: theme.text, fontFamily: theme.fontFamily }]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.75}
+              testID="call-name"
+            >
+              {displayName}
             </Text>
-          )}
-          <Text
-            style={[styles.status, { color: state === CallState.FAILED ? theme.danger : theme.textSecondary }]}
-            testID="call-status"
-            accessibilityLiveRegion="polite"
-          >
-            {status}
-          </Text>
-          {!!subtitle && <Text style={[styles.subtitle, { color: theme.textSecondary }]}>{subtitle}</Text>}
+            {displayName !== number && (
+              <Text style={[styles.number, { color: theme.text }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} testID="call-number">
+                {number}
+              </Text>
+            )}
+            <View style={styles.phaseRow} accessibilityLiveRegion="polite">
+              {state === CallState.ACTIVE && <View style={[styles.phaseDot, { backgroundColor: phaseColor }]} />}
+              <Text style={[styles.phase, { color: phaseColor }]} testID="call-status">
+                {phase}
+              </Text>
+            </View>
+            {showsTimer && (
+              <Text style={[styles.timer, { color: theme.text }]} testID="call-timer" accessibilityLabel={`Call duration ${formatDuration(duration)}`}>
+                {formatDuration(duration)}
+              </Text>
+            )}
+            {!!subtitle && <Text style={[styles.subtitle, { color: theme.textSecondary }]}>{subtitle}</Text>}
+          </BlurView>
         </View>
 
         <View style={styles.spacer}>
@@ -218,10 +242,28 @@ const styles = StyleSheet.create({
   flag: { fontSize: 16, marginRight: 6 },
   countryText: { fontSize: 13, fontWeight: "600" },
   identity: { alignItems: "center", marginTop: 12 },
-  name: { fontSize: 30, fontWeight: "600", marginTop: 4, textAlign: "center", maxWidth: "90%" },
-  number: { fontSize: 16, marginTop: 4 },
-  status: { fontSize: 17, marginTop: 8, fontVariant: ["tabular-nums"] },
-  subtitle: { fontSize: 13, marginTop: 4 },
+  identityPanel: {
+    alignItems: "center",
+    alignSelf: "stretch",
+    marginTop: 12,
+    marginHorizontal: 8,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    borderRadius: 24,
+    overflow: "hidden",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,255,255,0.18)",
+    // iOS blurs the photo behind; Android's BlurView doesn't here, so a denser tint keeps text readable.
+    backgroundColor: Platform.OS === "ios" ? "rgba(0,0,0,0.28)" : "rgba(0,0,0,0.5)",
+  },
+  name: { fontSize: 34, fontWeight: "800", letterSpacing: -0.5, textAlign: "center", maxWidth: "100%" },
+  numberTitle: { fontSize: 36, fontWeight: "800", letterSpacing: 0.5, textAlign: "center", maxWidth: "100%", fontVariant: ["tabular-nums"] },
+  number: { fontSize: 26, fontWeight: "700", marginTop: 4, letterSpacing: 0.5, fontVariant: ["tabular-nums"] },
+  phaseRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 12 },
+  phaseDot: { width: 10, height: 10, borderRadius: 5 },
+  phase: { fontSize: 24, fontWeight: "700", textAlign: "center" },
+  timer: { fontSize: 46, fontWeight: "800", marginTop: 4, letterSpacing: 1, fontVariant: ["tabular-nums"] },
+  subtitle: { fontSize: 15, fontWeight: "500", marginTop: 6, textAlign: "center" },
   spacer: { flex: 1, justifyContent: "center" },
   panel: {
     borderRadius: 32,

@@ -32,5 +32,5 @@ export type { CountryMatch, Landmark, LandmarkResolver } from "./landmarks/resol
 export type { LandmarkRecord } from "./landmarks/data";
 export { defaultCallUITheme, mergeTheme } from "./theme";
 export type { CallUITheme } from "./theme";
-export { defaultLabels, initials, statusText } from "./labels";
+export { callPhase, defaultLabels, initials, statusText } from "./labels";
 export type { CallLabels } from "./labels";
