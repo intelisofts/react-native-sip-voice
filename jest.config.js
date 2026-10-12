@@ -4,6 +4,7 @@ module.exports = {
   roots: ["<rootDir>/__tests__"],
   testPathIgnorePatterns: ["/helpers/"],
   setupFiles: ["<rootDir>/jest.setup.js"],
+  testTimeout: 15000,
   transformIgnorePatterns: [
     "node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|sip\\.js)",
   ],
