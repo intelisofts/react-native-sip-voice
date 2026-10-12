@@ -296,6 +296,7 @@ export class SipVoiceClient {
           targetUri: toSipUri(destination, creds.domain),
           extraHeaders,
           fromDisplayName: options.callerName ?? creds.displayName,
+          fromUri: options.callerId ? toSipUri(options.callerId, creds.domain) : undefined,
           dtmfMode: this.options.dtmfMode,
         },
         call,

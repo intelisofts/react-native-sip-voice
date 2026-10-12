@@ -142,11 +142,19 @@ describe("SipVoiceClient outgoing calls", () => {
       "X-Client-State: eyJhIjoxfQ==",
       "X-Tenant: acme",
     ]);
+    expect(request.fromUri).toBe("sip:+15550001111@sip.example.com");
     expect(request.dtmfMode).toBe("auto");
     expect(call.destination).toBe("+447700900123");
     expect(call.displayName).toBe("Bob");
     expect(call.metadata).toEqual({ plan: "gold" });
     expect(call.direction).toBe("outgoing");
+  });
+
+  it("leaves the From URI to the registration identity when no caller id is given", async () => {
+    const { client, adapter } = setup();
+    await client.connect(digestCreds);
+    await client.newCall({ destination: "+1" });
+    expect(adapter.lastInvite.request.fromUri).toBeUndefined();
   });
 
   it("honours custom header names and formats P-Asserted-Identity as a URI", async () => {

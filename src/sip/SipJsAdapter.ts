@@ -151,7 +151,11 @@ export class SipJsAdapter implements SignalingAdapter {
     const tokenHeaders = tokenHeaderLines(this.credentials);
     const inviter = new Inviter(this.ua, target, {
       extraHeaders: [...tokenHeaders, ...request.extraHeaders],
-      params: request.fromDisplayName ? { fromDisplayName: request.fromDisplayName } : undefined,
+      params: {
+        ...(request.fromDisplayName ? { fromDisplayName: request.fromDisplayName } : {}),
+        // The SBC authenticates on authorizationUsername, so a presented caller ID may differ from the registration identity.
+        ...(request.fromUri ? { fromUri: UserAgent.makeURI(request.fromUri) ?? undefined } : {}),
+      },
       sessionDescriptionHandlerOptions: { constraints: { audio: true, video: false } },
       earlyMedia: true,
     });
