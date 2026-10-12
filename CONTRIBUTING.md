@@ -7,3 +7,7 @@
 5. Landmark data is generated (see README). Only add images with a free licence, and regenerate `ATTRIBUTION.md`.
 
 Please open an issue before starting a large change.
+
+## Releasing
+
+See [RELEASE.md](RELEASE.md).

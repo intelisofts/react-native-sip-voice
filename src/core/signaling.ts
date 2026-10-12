@@ -7,6 +7,8 @@ export interface OutgoingInviteRequest {
   /** Extra headers as `Name: value` lines. */
   extraHeaders: string[];
   fromDisplayName?: string;
+  /** Overrides the From URI (registration identity is used when unset). */
+  fromUri?: string;
   dtmfMode: DtmfMode;
 }
 

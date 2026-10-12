@@ -246,6 +246,15 @@ describe("SipJsAdapter.invite", () => {
     expect(session.sipCallId).toBe("call-id-123");
   });
 
+  it("puts fromUri in the INVITE params so the From is the presented caller id", async () => {
+    const adapter = await connected(digestCreds);
+    adapter.invite(
+      { targetUri: "sip:+44@sip.example.com", extraHeaders: [], fromUri: "sip:+15550001111@sip.example.com", dtmfMode: "auto" },
+      callEvents(),
+    );
+    expect(mockState.inviters[0].options.params.fromUri.toString()).toBe("sip:+15550001111@sip.example.com");
+  });
+
   it("rejects an invalid target", async () => {
     const adapter = await connected();
     expect(() => adapter.invite({ targetUri: "nope", extraHeaders: [], dtmfMode: "auto" }, callEvents())).toThrow(

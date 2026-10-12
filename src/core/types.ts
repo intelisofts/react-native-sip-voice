@@ -104,7 +104,7 @@ export interface NewCallOptions {
   destination: string;
   /** Name shown in the From header display-name. */
   callerName?: string;
-  /** Caller ID to present. Sent in the configured caller-id header (default `X-Caller-Id`). */
+  /** Caller ID to present. Used as the From URI user part, and sent in the configured caller-id header (default `X-Caller-Id`). Without it the From falls back to the registration identity. */
   callerId?: string;
   /** Opaque, usually base64, state for your backend. Sent in the configured client-state header (default `X-Client-State`). */
   clientState?: string;
