@@ -12,6 +12,8 @@ export interface MinimizedCallBannerProps {
   call: Call;
   displayName: string;
   onPress: () => void;
+  /** Reports the banner's height so the host app can shift its content below it. */
+  onHeight?: (height: number) => void;
   theme?: CallUITheme;
   labels?: CallLabels;
 }
@@ -21,6 +23,7 @@ export function MinimizedCallBanner({
   call,
   displayName,
   onPress,
+  onHeight,
   theme = defaultCallUITheme,
   labels = defaultLabels,
 }: MinimizedCallBannerProps) {
@@ -46,6 +49,7 @@ export function MinimizedCallBanner({
       accessibilityRole="button"
       accessibilityLabel={`${labels.tapToReturn}. ${displayName}`}
       onPress={onPress}
+      onLayout={(e) => onHeight?.(e.nativeEvent.layout.height)}
       style={[styles.banner, { backgroundColor: theme.accent, paddingTop: insets.top + 4 }]}
     >
       <View style={styles.row}>
