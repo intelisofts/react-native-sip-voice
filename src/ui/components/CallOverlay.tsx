@@ -43,6 +43,8 @@ export interface CallOverlayProps {
    * immediately; when the real call starts it takes over inside the same screen. Ignored while a call exists.
    */
   preparing?: PreparingCall | null;
+  /** Height of the minimized-call banner (0 when hidden). Use it to push your content down so the banner overlays nothing. */
+  onBannerHeight?: (height: number) => void;
 }
 
 /**
@@ -67,6 +69,7 @@ export function CallOverlay({
   blurRadius,
   showHold,
   preparing: preparingProp,
+  onBannerHeight,
 }: CallOverlayProps) {
   const call = useActiveCall();
   const { state } = useCallState(call);
@@ -92,6 +95,11 @@ export function CallOverlay({
     if (terminated) setMinimizedId(null);
   }, [terminated]);
 
+  const bannerShown = !!call && minimized;
+  useEffect(() => {
+    if (!bannerShown) onBannerHeight?.(0);
+  }, [bannerShown, onBannerHeight]);
+
   if (!call && !preparing) return null;
 
   const isIncomingRinging = !!call && call.isIncoming && state === CallState.RINGING;
@@ -108,6 +116,7 @@ export function CallOverlay({
         call={call}
         displayName={displayName}
         onPress={() => setMinimizedId(null)}
+        onHeight={onBannerHeight}
         theme={theme}
         labels={labels}
       />
