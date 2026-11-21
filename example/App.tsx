@@ -31,7 +31,7 @@ function Dialer() {
 export default function App() {
   return (
     <SafeAreaProvider>
-      <SipVoiceProvider client={client} nativeConfig={{ appName: "SIP Voice Example" }}>
+      <SipVoiceProvider client={client} nativeConfig={{ supportsHolding: false }}>
         <Dialer />
         <CallOverlay />
       </SipVoiceProvider>
