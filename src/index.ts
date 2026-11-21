@@ -14,18 +14,10 @@ export type {
 } from "./core/signaling";
 export { formatDuration, normalizePhoneNumber, toSipUri, uuidv4 } from "./core/utils";
 
-export { getNativeCallUI, NoopNativeCallUI } from "./native/NativeCallUI";
-export type {
-  AudioRoute,
-  NativeCallUI,
-  NativeCallUIConfig,
-  NativeCallUIEvents,
-  NativeEndReason,
-} from "./native/NativeCallUI";
 export { getNativeCallCoordinator, NativeCallCoordinator } from "./native/NativeCallCoordinator";
-export { androidCallSetup } from "./native/androidCallSetup";
-export { registerIncomingCallTask } from "./native/incomingCallTask";
-export type { NativeCallSnapshot } from "./native/NativeCallUI";
+export type { NativeCallUIConfig } from "./native/NativeCallCoordinator";
+export { loadCallSystem } from "./native/callSystem";
+export type { CallSystem } from "./native/callSystem";
 
 export { SipVoiceProvider, useSipVoice } from "./react/SipVoiceProvider";
 export type { SipVoiceProviderProps, SipVoiceContextValue } from "./react/SipVoiceProvider";

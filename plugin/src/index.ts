@@ -1,54 +1,38 @@
-import {
-  ConfigPlugin,
-  createRunOncePlugin,
-  withEntitlementsPlist,
-  withInfoPlist,
-} from "@expo/config-plugins";
+import { ConfigPlugin, createRunOncePlugin, withPlugins } from "@expo/config-plugins";
 
 export interface SipVoicePluginProps {
-  /** Microphone permission text (iOS). Only set when the app doesn't already define one. */
+  /** Microphone permission text (iOS). */
   microphonePermission?: string;
   /**
-   * Register for VoIP (PushKit) pushes at launch so incoming calls can wake a terminated app.
-   * Your backend must then send a VoIP push for every incoming call. Default false.
+   * Options for expo-callkit-telecom's config plugin, which this applies (ringtone, icons, notification strings,
+   * timeouts, …). See https://expo-callkit-telecom.mfairley.com/getting-started.
    */
-  voipPush?: boolean;
-  /** `aps-environment` to set when voipPush is enabled and none is present. Default `development`. */
-  apsEnvironment?: "development" | "production";
+  callkit?: Record<string, unknown>;
 }
 
 const DEFAULT_MIC = "Allow $(PRODUCT_NAME) to use the microphone for voice calls.";
 
-export function addBackgroundModes(existing: unknown, modes: string[]): string[] {
-  const current = Array.isArray(existing) ? (existing as string[]) : [];
-  return Array.from(new Set([...current, ...modes]));
+/** Tells the backend about a call declined while the app was closed (see SipVoiceCallEventReceiver). */
+export const CALL_EVENT_RECEIVER = "expo.modules.sipvoice.SipVoiceCallEventReceiver";
+
+/** The options passed to expo-callkit-telecom's plugin: voice calls, the SBC's ring window, our event receiver. */
+export function callkitOptions(props: SipVoicePluginProps = {}): Record<string, unknown> {
+  return {
+    supportsVideo: false,
+    // The SBC holds a call up to 45 s for a woken phone, then rings it: give up ringing with it.
+    incomingCallTimeout: 45,
+    microphonePermission: props.microphonePermission ?? DEFAULT_MIC,
+    ...props.callkit,
+    androidEventReceiver: CALL_EVENT_RECEIVER,
+  };
 }
 
-const withSipVoiceIos: ConfigPlugin<SipVoicePluginProps> = (config, props) => {
-  config = withInfoPlist(config, (cfg) => {
-    cfg.modResults.UIBackgroundModes = addBackgroundModes(cfg.modResults.UIBackgroundModes, ["audio", "voip"]);
-    if (!cfg.modResults.NSMicrophoneUsageDescription) {
-      cfg.modResults.NSMicrophoneUsageDescription = props.microphonePermission ?? DEFAULT_MIC;
-    }
-    cfg.modResults.SipVoiceEnableVoipPush = !!props.voipPush;
-    return cfg;
-  });
-  if (props.voipPush) {
-    config = withEntitlementsPlist(config, (cfg) => {
-      cfg.modResults["aps-environment"] ??= props.apsEnvironment ?? "development";
-      return cfg;
-    });
-  }
-  return config;
-};
-
 /**
- * Expo config plugin for react-native-sip-voice.
- * Android needs nothing here: permissions and services merge from the library manifest.
+ * Expo config plugin for react-native-sip-voice: sets up expo-callkit-telecom (CallKit, Core-Telecom, VoIP push,
+ * background modes, permissions) with the options this library needs.
  */
-const withSipVoice: ConfigPlugin<SipVoicePluginProps | void> = (config, props) => {
-  return withSipVoiceIos(config, props ?? {});
-};
+const withSipVoice: ConfigPlugin<SipVoicePluginProps | void> = (config, props) =>
+  withPlugins(config, [["expo-callkit-telecom", callkitOptions(props ?? {})]]);
 
-const pkg = { name: "react-native-sip-voice", version: "0.1.0" };
+const pkg = { name: "react-native-sip-voice", version: "0.4.0" };
 export default createRunOncePlugin(withSipVoice, pkg.name, pkg.version);

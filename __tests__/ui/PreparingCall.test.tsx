@@ -6,7 +6,7 @@ import { SipVoiceProvider } from "../../src/react/SipVoiceProvider";
 import { CallConfirmPanel } from "../../src/ui/components/CallConfirmPanel";
 import { CallOverlay } from "../../src/ui/components/CallOverlay";
 import type { PreparingCall } from "../../src/ui/components/PreparingCallScreen";
-import { digestCreds, FakeAdapter, FakeNative } from "../helpers/fakes";
+import { digestCreds, FakeAdapter, FakeCallSystem } from "../helpers/fakes";
 
 const liveClients: SipVoiceClient[] = [];
 afterEach(async () => {
@@ -19,7 +19,7 @@ async function setup(preparing: PreparingCall | null) {
   liveClients.push(client);
   await client.connect(digestCreds);
   const ui = (p: PreparingCall | null) => (
-    <SipVoiceProvider client={client} native={new FakeNative()}>
+    <SipVoiceProvider client={client} callSystem={new FakeCallSystem() as any}>
       <CallOverlay preparing={p} />
     </SipVoiceProvider>
   );

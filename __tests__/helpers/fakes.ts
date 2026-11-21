@@ -6,7 +6,6 @@ import type {
   SignalingAdapterEvents,
 } from "../../src/core/signaling";
 import { ConnectionState, DigestCredentials, SipCredentials, TokenCredentials } from "../../src/core/types";
-import type { NativeCallUI, NativeCallUIEvents } from "../../src/native/NativeCallUI";
 
 export class FakeSession implements CallSession {
   sipCallId = "sip-call-id-1";
@@ -89,40 +88,71 @@ export const tokenCreds: TokenCredentials = {
   token: "jwt.token.value",
 };
 
-type Listener = (payload: any) => void;
+type Handler = (payload: any) => void;
 
-export class FakeNative implements NativeCallUI {
-  readonly isAvailable = true;
-  listeners = new Map<string, Set<Listener>>();
-  configure = jest.fn(async () => {});
-  startOutgoingCall = jest.fn(async () => {});
-  reportOutgoingCallConnecting = jest.fn();
-  startRingback = jest.fn();
-  stopRingback = jest.fn();
-  reportCallConnected = jest.fn();
-  reportIncomingCall = jest.fn(async () => {});
-  reportCallEnded = jest.fn();
-  endCall = jest.fn(async () => {});
-  setMuted = jest.fn();
-  setHeld = jest.fn();
-  updateDisplay = jest.fn();
-  setAudioRoute = jest.fn(async () => {});
-  getAudioRoutes = jest.fn(async () => ({ current: "earpiece" as const, available: ["earpiece" as const, "speaker" as const] }));
-  registerVoipPush = jest.fn();
-  getVoipPushToken = jest.fn(async () => null);
-  getPendingPushCalls = jest.fn(async (): Promise<{ callId: string; payload: Record<string, unknown>; answered?: boolean; declined?: boolean }[]> => []);
+/** A fake of the system call layer (expo-callkit-telecom): records requests, lets tests fire system events. */
+export class FakeCallSystem {
+  private handlers = new Map<string, Set<Handler>>();
+  private nextId = 1;
+  activeSession: any = null;
+  speakerOn = false;
 
-  addListener<K extends keyof NativeCallUIEvents>(event: K, listener: (payload: NativeCallUIEvents[K]) => void) {
-    const set = this.listeners.get(event) ?? new Set();
+  private on = (event: string) => (listener: Handler) => {
+    const set = this.handlers.get(event) ?? new Set();
     set.add(listener);
-    this.listeners.set(event, set);
-    return { unsubscribe: () => set.delete(listener) };
+    this.handlers.set(event, set);
+    return { remove: () => set.delete(listener) };
+  };
+
+  /** Fire a system event: sessionAdded, sessionRemoved, answered, ended, muted, held, dtmf, route. */
+  emit(event: string, payload: any) {
+    this.handlers.get(event)?.forEach((l) => l(payload));
   }
 
-  emit<K extends keyof NativeCallUIEvents>(event: K, payload: NativeCallUIEvents[K]) {
-    this.listeners.get(event)?.forEach((l) => l(payload));
+  listenerCount(event: string) {
+    return this.handlers.get(event)?.size ?? 0;
   }
+
+  startOutgoingCall = jest.fn(async (_recipient: any, _options?: any) => `sys-${this.nextId++}`);
+  reportIncomingCall = jest.fn(async (_event: any) => {});
+  answerCall = jest.fn(async (_id: string) => {});
+  endCall = jest.fn(async (_id: string) => {});
+  reportCallEnded = jest.fn(async (_id: string, _reason: any) => {});
+  reportOutgoingCallConnected = jest.fn(async (_id: string) => {});
+  fulfillIncomingCallConnected = jest.fn(async (_requestId: string) => {});
+  failIncomingCallConnected = jest.fn(async (_id: string, _requestId: string) => {});
+  setMuted = jest.fn(async (_id: string, _muted: boolean) => {});
+  setHeld = jest.fn(async (_id: string, _held: boolean) => {});
+  getActiveCallSession = jest.fn(async () => this.activeSession);
+  getAudioSession = jest.fn(() => ({
+    currentRoute: { inputs: [], outputs: [{ portType: this.speakerOn ? "builtInSpeaker" : "builtInReceiver", portName: "", uid: "" }] },
+  }) as any);
+  setAudioSessionPortOverride = jest.fn((on: boolean) => {
+    this.speakerOn = on;
+  });
+
+  addCallSessionAddedListener = this.on("sessionAdded");
+  addCallSessionRemovedListener = this.on("sessionRemoved");
+  addCallAnsweredListener = this.on("answered");
+  addCallEndedListener = this.on("ended");
+  addSetMutedActionListener = this.on("muted");
+  addSetHeldActionListener = this.on("held");
+  addDTMFListener = this.on("dtmf");
+  addAudioRouteChangedListener = this.on("route");
 }
+
+/** A session as expo-callkit-telecom reports one announced by VoIP push. */
+export const pushSession = (id: string, serverCallId: string, extra: Record<string, unknown> = {}) => ({
+  id,
+  origin: "incoming",
+  status: "ringing",
+  isMuted: false,
+  isOnHold: false,
+  remoteParticipants: [],
+  options: { hasVideo: false, supportsHolding: false, supportsDTMF: true },
+  incomingCallEvent: { eventId: `evt-${id}`, serverCallId, caller: { id: "+1" } },
+  ...extra,
+});
 
 /** Resolve pending promise callbacks. */
 export const flush = () => new Promise<void>((r) => jest.requireActual<typeof globalThis>("timers").setImmediate(r));

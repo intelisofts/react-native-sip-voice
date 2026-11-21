@@ -4,7 +4,7 @@ import { Platform, Text } from "react-native";
 import { SipVoiceClient } from "../../src/core/SipVoiceClient";
 import { SipVoiceProvider } from "../../src/react/SipVoiceProvider";
 import { CallOverlay, CallOverlayProps } from "../../src/ui/components/CallOverlay";
-import { digestCreds, FakeAdapter, FakeNative, flush } from "../helpers/fakes";
+import { digestCreds, FakeAdapter, FakeCallSystem, flush } from "../helpers/fakes";
 
 const liveClients: SipVoiceClient[] = [];
 afterEach(async () => {
@@ -12,14 +12,14 @@ afterEach(async () => {
   await Promise.all(liveClients.splice(0).map((c) => c.destroy()));
 });
 
-async function setup(props: CallOverlayProps = {}) {
+async function setup(props: CallOverlayProps = {}, system: FakeCallSystem | null = new FakeCallSystem()) {
   const adapter = new FakeAdapter();
   const client = new SipVoiceClient({}, { adapter });
   liveClients.push(client);
-  const native = new FakeNative();
+  const native = system ?? new FakeCallSystem();
   await client.connect(digestCreds);
   await render(
-    <SipVoiceProvider client={client} native={native}>
+    <SipVoiceProvider client={client} callSystem={system as any}>
       <CallOverlay {...props} />
     </SipVoiceProvider>,
   );
@@ -184,10 +184,16 @@ describe("CallOverlay", () => {
     expect(screen.getByTestId("call-country-chip")).toBeTruthy();
   });
 
-  it("shows the incoming screen for SIP incoming calls", async () => {
-    const { adapter } = await setup();
+  it("shows the in-app incoming screen when there is no system call UI", async () => {
+    const { adapter } = await setup({}, null);
     await act(() => adapter.incoming("+33123456789", {}, "Marie"));
     expect(screen.getByTestId("incoming-name")).toHaveTextContent("Marie");
+  });
+
+  it("leaves a ringing incoming call to the system call UI when there is one", async () => {
+    const { adapter } = await setup();
+    await act(() => adapter.incoming("+33123456789", {}, "Marie"));
+    expect(screen.queryByTestId("incoming-name")).toBeNull();
   });
 
   it("leaves iOS push calls to CallKit", async () => {
@@ -217,11 +223,11 @@ describe("CallOverlay", () => {
     expect(screen.getByTestId("custom-ui")).toHaveTextContent("custom Z");
   });
 
-  it("toggles the speaker through the native bridge", async () => {
+  it("toggles the speaker through the system call layer", async () => {
     const { client, native } = await setup();
     await act(() => client.newCall({ destination: "+1" }));
     await act(flush);
     await fireEvent.press(screen.getByTestId("call-speaker"));
-    expect(native.setAudioRoute).toHaveBeenCalledWith("speaker");
+    expect(native.setAudioSessionPortOverride).toHaveBeenCalledWith(true);
   });
 });

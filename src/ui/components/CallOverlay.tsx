@@ -6,7 +6,6 @@ import type { Call } from "../../core/Call";
 import { CallState } from "../../core/types";
 import { useActiveCall, useAudioRoute, useCallState } from "../../react/hooks";
 import { useSipVoice } from "../../react/SipVoiceProvider";
-import { getNativeCallUI } from "../../native/NativeCallUI";
 import { CallLabels, defaultLabels } from "../labels";
 import { LandmarkResolver, resolveLandmark } from "../landmarks/resolver";
 import { CallUITheme, mergeTheme } from "../theme";
@@ -104,7 +103,7 @@ export function CallOverlay({
   const call = useActiveCall();
   const { state } = useCallState(call);
   const { isSpeakerOn, toggleSpeaker } = useAudioRoute();
-  const { client } = useSipVoice();
+  const { client, system } = useSipVoice();
   const [minimizedId, setMinimizedId] = useState<string | null>(null);
 
   const terminated = state === CallState.ENDED || state === CallState.FAILED;
@@ -180,9 +179,9 @@ export function CallOverlay({
 
   const isIncomingRinging = !!call && call.isIncoming && state === CallState.RINGING;
   const fromPush = !!call?.metadata.fromPush;
-  // Incoming calls belong to the system call screen (CallKit / ConnectionService) whenever it is available,
+  // Incoming calls belong to the system call screen (CallKit / Core-Telecom) whenever it is available,
   // as in WhatsApp: no second set of Accept/Decline buttons inside the app. The in-app screen is the fallback only.
-  const systemCallUI = getNativeCallUI().isAvailable;
+  const systemCallUI = !!system && client.nativeCallUIEnabled;
   const leftToSystemUI = isIncomingRinging && (!showIncomingScreen || systemCallUI || (fromPush && Platform.OS === "ios"));
   const fullScreen = !!(effectiveCall || preparing || showingRating) && !leftToSystemUI && !(call && minimized);
 

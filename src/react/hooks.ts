@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import type { Call } from "../core/Call";
 import type { ReadonlyValueStream } from "../core/observable";
 import { CallState, ConnectionState } from "../core/types";
-import type { AudioRoute } from "../native/NativeCallUI";
+import { isSpeakerRoute } from "../native/callSystem";
 import { useSipVoice } from "./SipVoiceProvider";
 
 const NULL_STREAM: ReadonlyValueStream<any> = {
@@ -73,44 +73,35 @@ export function useCallDuration(call: Call | null | undefined, intervalMs = 1000
   return seconds;
 }
 
-/** Current audio route plus a setter (speaker / earpiece / Bluetooth). */
+/**
+ * Whether the call plays through the loudspeaker, and a toggle. Off routes to the earpiece, or to a connected
+ * Bluetooth or wired headset, as the system decides.
+ */
 export function useAudioRoute() {
-  const { native } = useSipVoice();
-  const [route, setRouteState] = useState<AudioRoute>("earpiece");
-  const [available, setAvailable] = useState<AudioRoute[]>(["earpiece", "speaker"]);
+  const { system } = useSipVoice();
+  const [isSpeakerOn, setSpeakerOn] = useState(() => {
+    try {
+      return isSpeakerRoute(system?.getAudioSession().currentRoute);
+    } catch {
+      return false;
+    }
+  });
 
   useEffect(() => {
-    let alive = true;
-    native
-      .getAudioRoutes()
-      .then((r) => {
-        if (!alive) return;
-        setRouteState(r.current);
-        setAvailable(r.available);
-      })
-      .catch(() => {});
-    const sub = native.addListener("audioRouteChanged", (r) => {
-      setRouteState(r.route);
-      setAvailable(r.available);
-    });
-    return () => {
-      alive = false;
-      sub.unsubscribe();
-    };
-  }, [native]);
+    if (!system) return;
+    const sub = system.addAudioRouteChangedListener((e) => setSpeakerOn(isSpeakerRoute(e.currentRoute)));
+    return () => sub.remove();
+  }, [system]);
 
-  const setRoute = useCallback(
-    async (next: AudioRoute) => {
-      setRouteState(next);
-      await native.setAudioRoute(next);
+  const setSpeaker = useCallback(
+    (on: boolean) => {
+      setSpeakerOn(on);
+      system?.setAudioSessionPortOverride(on);
     },
-    [native],
+    [system],
   );
 
-  const toggleSpeaker = useCallback(
-    () => setRoute(route === "speaker" ? (available.includes("bluetooth") ? "bluetooth" : "earpiece") : "speaker"),
-    [route, available, setRoute],
-  );
+  const toggleSpeaker = useCallback(() => setSpeaker(!isSpeakerOn), [isSpeakerOn, setSpeaker]);
 
-  return { route, available, setRoute, toggleSpeaker, isSpeakerOn: route === "speaker" };
+  return { isSpeakerOn, setSpeaker, toggleSpeaker };
 }

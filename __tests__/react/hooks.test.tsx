@@ -13,7 +13,7 @@ import {
   useConnectionState,
 } from "../../src/react/hooks";
 import { SipVoiceProvider, useSipVoice } from "../../src/react/SipVoiceProvider";
-import { digestCreds, FakeAdapter, FakeNative, flush } from "../helpers/fakes";
+import { digestCreds, FakeAdapter, FakeCallSystem, flush } from "../helpers/fakes";
 
 const liveClients: SipVoiceClient[] = [];
 afterEach(async () => {
@@ -24,9 +24,9 @@ function setup(clientOptions: ConstructorParameters<typeof SipVoiceClient>[0] = 
   const adapter = new FakeAdapter();
   const client = new SipVoiceClient(clientOptions, { adapter });
   liveClients.push(client);
-  const native = new FakeNative();
+  const native = new FakeCallSystem();
   const wrapper = ({ children }: { children: React.ReactNode }) => (
-    <SipVoiceProvider client={client} native={native} nativeConfig={{ appName: "Test" }}>
+    <SipVoiceProvider client={client} callSystem={native as any} nativeConfig={{ supportsHolding: true }}>
       {children}
     </SipVoiceProvider>
   );
@@ -48,7 +48,7 @@ describe("SipVoiceProvider", () => {
     await act(flush);
     expect(result.current.client).toBe(client);
     expect(result.current.coordinator).not.toBeNull();
-    expect(native.configure).toHaveBeenCalledWith({ appName: "Test" });
+    expect(native.getActiveCallSession).toHaveBeenCalledTimes(1);
   });
 
   it("skips the coordinator when nativeCallUI is disabled", async () => {
@@ -135,23 +135,21 @@ describe("hooks", () => {
     expect(result.current).toBe(0);
   });
 
-  it("useAudioRoute loads routes, toggles speaker and follows native changes", async () => {
+  it("useAudioRoute reads the speaker state, toggles it and follows system route changes", async () => {
     const { wrapper, native } = setup();
-    native.getAudioRoutes.mockResolvedValueOnce({ current: "earpiece", available: ["earpiece", "speaker", "bluetooth"] as any });
     const { result } = await renderHook(() => useAudioRoute(), { wrapper });
-    await act(flush);
-    expect(result.current.available).toContain("bluetooth");
+    expect(result.current.isSpeakerOn).toBe(false);
 
     await act(() => result.current.toggleSpeaker());
-    expect(native.setAudioRoute).toHaveBeenLastCalledWith("speaker");
+    expect(native.setAudioSessionPortOverride).toHaveBeenLastCalledWith(true);
     expect(result.current.isSpeakerOn).toBe(true);
 
-    // Toggling off prefers Bluetooth when connected.
     await act(() => result.current.toggleSpeaker());
-    expect(native.setAudioRoute).toHaveBeenLastCalledWith("bluetooth");
+    expect(native.setAudioSessionPortOverride).toHaveBeenLastCalledWith(false);
 
-    await act(() => native.emit("audioRouteChanged", { route: "speaker", available: ["earpiece", "speaker"] }));
-    expect(result.current.route).toBe("speaker");
-    expect(result.current.available).toEqual(["earpiece", "speaker"]);
+    await act(() =>
+      native.emit("route", { currentRoute: { inputs: [], outputs: [{ portType: "builtInSpeaker", portName: "", uid: "" }] } }),
+    );
+    expect(result.current.isSpeakerOn).toBe(true);
   });
 });
