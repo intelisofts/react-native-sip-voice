@@ -89,8 +89,7 @@ describe("getNativeCallUI", () => {
   it("falls back to the no-op bridge when the native module is missing", () => {
     jest.isolateModules(() => {
       jest.doMock("expo", () => ({ requireOptionalNativeModule: () => null }));
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const { getNativeCallUI } = require("../../src/native/NativeCallUI");
+      const { getNativeCallUI } = jest.requireActual("../../src/native/NativeCallUI");
       const n = getNativeCallUI();
       expect(n.isAvailable).toBe(false);
       expect(getNativeCallUI()).toBe(n);
@@ -100,8 +99,7 @@ describe("getNativeCallUI", () => {
   it("wraps the native module when present", () => {
     jest.isolateModules(() => {
       jest.doMock("expo", () => ({ requireOptionalNativeModule: () => ({ addListener: jest.fn() }) }));
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const { getNativeCallUI } = require("../../src/native/NativeCallUI");
+      const { getNativeCallUI } = jest.requireActual("../../src/native/NativeCallUI");
       expect(getNativeCallUI().isAvailable).toBe(true);
     });
   });

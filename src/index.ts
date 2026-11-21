@@ -1,5 +1,5 @@
 export { Call } from "./core/Call";
-export type { CallInit } from "./core/Call";
+export type { CallInit, AnswerGate } from "./core/Call";
 export { SipVoiceClient } from "./core/SipVoiceClient";
 export type { SipVoiceClientDeps, SipVoiceClientEvents, PendingPushCall } from "./core/SipVoiceClient";
 export * from "./core/types";
@@ -22,7 +22,10 @@ export type {
   NativeCallUIEvents,
   NativeEndReason,
 } from "./native/NativeCallUI";
-export { NativeCallCoordinator } from "./native/NativeCallCoordinator";
+export { getNativeCallCoordinator, NativeCallCoordinator } from "./native/NativeCallCoordinator";
+export { androidCallSetup } from "./native/androidCallSetup";
+export { registerIncomingCallTask } from "./native/incomingCallTask";
+export type { NativeCallSnapshot } from "./native/NativeCallUI";
 
 export { SipVoiceProvider, useSipVoice } from "./react/SipVoiceProvider";
 export type { SipVoiceProviderProps, SipVoiceContextValue } from "./react/SipVoiceProvider";

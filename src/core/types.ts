@@ -31,6 +31,7 @@ export type CallEndReason =
   | "local_hangup"
   | "remote_hangup"
   | "rejected"
+  | "answered_elsewhere"
   | "busy"
   | "no_answer"
   | "unavailable"

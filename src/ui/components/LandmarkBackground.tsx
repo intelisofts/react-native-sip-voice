@@ -1,52 +1,40 @@
-import { Image } from "expo-image";
+import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
-import React, { useState } from "react";
+import React from "react";
 import { StyleSheet, View } from "react-native";
 
-import { DEFAULT_LANDMARK_COLORS, Landmark } from "../landmarks/resolver";
+import type { Landmark } from "../landmarks/resolver";
 
 export interface LandmarkBackgroundProps {
-  landmark: Landmark | null;
-  /** Blur radius applied to the photo. 0 keeps it crisp (default); WhatsApp-style soft look ≈ 8. */
-  blurRadius?: number;
+  /** Kept for callers; the background no longer depends on the destination. */
+  landmark?: Landmark | null;
   children?: React.ReactNode;
 }
 
-/**
- * Full-bleed destination landmark with gradient scrims so white text stays readable.
- * Falls back to a country-tinted gradient when there is no image or it fails to load (offline).
- */
-export function LandmarkBackground({ landmark, blurRadius = 0, children }: LandmarkBackgroundProps) {
-  const [failed, setFailed] = useState(false);
-  const colors = landmark?.colors ?? DEFAULT_LANDMARK_COLORS;
-  const showImage = !!landmark?.imageUrl && !failed;
+// Dark base, as WhatsApp's call screen, so text and controls always read clearly. Two soft out-of-focus
+// colour blobs in the app's own brand gradient (blue → violet) add a little warmth without a photo: no
+// per-call data, no network request, so it never fails to load and never needs an attribution line.
+const CALL_BACKGROUND = "#111B21";
+const BLOB_COLORS: [string, string] = ["#2563eb", "#7c3aed"];
 
+/** Background for every call screen: a plain dark surface with two blurred brand-colour glows. */
+export function LandmarkBackground({ children }: LandmarkBackgroundProps) {
   return (
-    <View style={styles.fill} testID="landmark-background">
-      <LinearGradient colors={colors} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
-      {showImage && (
-        <Image
-          testID="landmark-image"
-          source={{ uri: landmark!.imageUrl }}
-          style={StyleSheet.absoluteFill}
-          contentFit="cover"
-          transition={400}
-          blurRadius={blurRadius}
-          cachePolicy="disk"
-          accessibilityLabel={`${landmark!.landmark}, ${landmark!.city}`}
-          onError={() => setFailed(true)}
-        />
-      )}
-      <LinearGradient
-        colors={["rgba(0,0,0,0.65)", "rgba(0,0,0,0.15)", "rgba(0,0,0,0.25)", "rgba(0,0,0,0.85)"]}
-        locations={[0, 0.35, 0.6, 1]}
-        style={StyleSheet.absoluteFill}
-      />
+    <View style={[styles.fill, { backgroundColor: CALL_BACKGROUND }]} testID="landmark-background">
+      <View style={[StyleSheet.absoluteFill, styles.art]} pointerEvents="none" testID="landmark-art">
+        <LinearGradient colors={[BLOB_COLORS[0], "transparent"]} style={[styles.blob, styles.blobTopRight]} />
+        <LinearGradient colors={[BLOB_COLORS[1], "transparent"]} style={[styles.blob, styles.blobBottomLeft]} />
+        <BlurView intensity={90} tint="dark" style={StyleSheet.absoluteFill} />
+      </View>
       {children}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  fill: { flex: 1, backgroundColor: "#000" },
+  fill: { flex: 1 },
+  art: { overflow: "hidden" },
+  blob: { position: "absolute", width: 420, height: 420, borderRadius: 210 },
+  blobTopRight: { top: -170, right: -150, opacity: 0.55 },
+  blobBottomLeft: { bottom: -190, left: -170, opacity: 0.4 },
 });

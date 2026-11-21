@@ -45,6 +45,22 @@ describe("NativeCallCoordinator", () => {
     expect(native.setHeld).toHaveBeenLastCalledWith(call.id, false);
   });
 
+  it("plays the ring-back for a free app call while it rings, and stops it when connected", async () => {
+    const { client, native } = await setup();
+    const call = await client.newCall({ destination: "+447700900123", displayName: "Bob", metadata: { kind: "app" } });
+    call.onRinging();
+    expect(native.startRingback).toHaveBeenCalledWith(call.id);
+    call.onAnswered();
+    expect(native.stopRingback).toHaveBeenCalled();
+  });
+
+  it("never plays the ring-back for a paid call", async () => {
+    const { client, native } = await setup();
+    const call = await client.newCall({ destination: "+447700900123", displayName: "Bob" });
+    call.onRinging();
+    expect(native.startRingback).not.toHaveBeenCalled();
+  });
+
   it("asks the system to end the call on local hangup", async () => {
     const { client, native } = await setup();
     const call = await client.newCall({ destination: "+1" });
@@ -148,6 +164,48 @@ describe("NativeCallCoordinator", () => {
     expect(native.reportIncomingCall).not.toHaveBeenCalled();
   });
 
+  it("answers a push call that was answered natively before JS started", async () => {
+    const adapter = new FakeAdapter();
+    const client = new SipVoiceClient({}, { adapter });
+    liveClients.push(client);
+    const native = new FakeNative();
+    native.getPendingPushCalls.mockResolvedValueOnce([
+      { callId: "aaaaaaaa-0000-4000-8000-00000000000b", payload: {}, answered: true },
+    ]);
+    await new NativeCallCoordinator(client, native).start();
+    await client.connect(digestCreds);
+    const session = adapter.incoming("+1");
+    expect(client.currentCalls[0].id).toBe("aaaaaaaa-0000-4000-8000-00000000000b");
+    expect(session.answer).toHaveBeenCalled();
+  });
+
+  it("rejects a push call that was declined natively before JS started, without ringing again", async () => {
+    const adapter = new FakeAdapter();
+    const client = new SipVoiceClient({}, { adapter });
+    liveClients.push(client);
+    const native = new FakeNative();
+    native.getPendingPushCalls.mockResolvedValueOnce([
+      { callId: "aaaaaaaa-0000-4000-8000-00000000000c", payload: {}, declined: true },
+    ]);
+    await new NativeCallCoordinator(client, native).start();
+    await client.connect(digestCreds);
+    const session = adapter.incoming("+1");
+    expect(session.hangup).toHaveBeenCalled();
+    expect(session.answer).not.toHaveBeenCalled();
+    expect(native.reportIncomingCall).not.toHaveBeenCalled();
+    expect(client.currentCalls[0].endReason).toBe("native_ui");
+  });
+
+  it("rejects the INVITE of a push call declined on the system screen before it arrived", async () => {
+    const { adapter, native } = await setup();
+    const id = "11111111-2222-4333-8444-555555555556";
+    native.emit("pushIncomingCall", { callId: id, payload: { call_id: "def" } });
+    native.emit("endCall", { callId: id });
+    const session = adapter.incoming("+1", { "x-call-id": "def" });
+    expect(session.hangup).toHaveBeenCalled();
+    expect(native.reportIncomingCall).not.toHaveBeenCalled();
+  });
+
   it("keeps the call going when the native report fails", async () => {
     const { client, native, logger } = await setup();
     native.startOutgoingCall.mockRejectedValueOnce(new Error("CallKit busy"));
@@ -177,5 +235,19 @@ describe("NativeCallCoordinator", () => {
     coordinator.stop();
     await client.newCall({ destination: "+1" });
     expect(native.startOutgoingCall).not.toHaveBeenCalled();
+  });
+
+  it("shares one coordinator per client between the provider and code outside React", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { getNativeCallCoordinator } = require("../../src/native/NativeCallCoordinator");
+    const native = new FakeNative();
+    const a = new SipVoiceClient({}, { adapter: new FakeAdapter() });
+    const b = new SipVoiceClient({}, { adapter: new FakeAdapter() });
+    liveClients.push(a, b);
+    expect(getNativeCallCoordinator(a, native)).toBe(getNativeCallCoordinator(a, native));
+    expect(getNativeCallCoordinator(a, native)).not.toBe(getNativeCallCoordinator(b, native));
+    const off = new SipVoiceClient({ nativeCallUI: false }, { adapter: new FakeAdapter() });
+    liveClients.push(off);
+    expect(getNativeCallCoordinator(off, native)).toBeNull();
   });
 });

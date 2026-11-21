@@ -21,6 +21,8 @@ Pod::Spec.new do |s|
 
   s.frameworks = 'CallKit', 'PushKit', 'AVFoundation'
   s.source_files = "**/*.{h,m,swift}"
+  # The caller-side ring-back tone: a real short audio file, not generated code.
+  s.resources = 'Resources/**/*'
   s.pod_target_xcconfig = {
     'DEFINES_MODULE' => 'YES',
     'SWIFT_COMPILATION_MODE' => 'wholemodule'

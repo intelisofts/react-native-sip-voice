@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useMemo, useRef } from "re
 import { AppState } from "react-native";
 
 import type { SipVoiceClient } from "../core/SipVoiceClient";
-import { NativeCallCoordinator } from "../native/NativeCallCoordinator";
+import { getNativeCallCoordinator, type NativeCallCoordinator } from "../native/NativeCallCoordinator";
 import { getNativeCallUI, NativeCallUI, NativeCallUIConfig } from "../native/NativeCallUI";
 
 export interface SipVoiceContextValue {
@@ -33,9 +33,7 @@ export function SipVoiceProvider({
 }: SipVoiceProviderProps) {
   const native = useMemo(() => nativeOverride ?? getNativeCallUI(), [nativeOverride]);
   const coordinatorRef = useRef<NativeCallCoordinator | null>(null);
-  if (!coordinatorRef.current && client.nativeCallUIEnabled) {
-    coordinatorRef.current = new NativeCallCoordinator(client, native);
-  }
+  if (!coordinatorRef.current) coordinatorRef.current = getNativeCallCoordinator(client, native);
   const configRef = useRef(nativeConfig);
 
   useEffect(() => {

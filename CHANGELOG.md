@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0
+
+- `unregister()`: stops being reachable (REGISTER with expiry 0, then closes the connection). For when the app goes to the background. Does nothing and returns `false` while a call is live. A slow server never delays closing (1.5 s limit).
+- `setAnswerGate(gate)`: runs when the user accepts an incoming call, before it is answered. Returning `false` or throwing gives the call up, so an app can ask its backend whether another device already took the call. The call ends with the new reason `"answered_elsewhere"` (or `"failed"` when the check could not run), and CallKit / ConnectionService show it as answered elsewhere. Also applies to calls already ringing.
+- New `CallEndReason`: `"answered_elsewhere"`. New exported type `AnswerGate`.
+- `SignalingAdapter.unregister?()` (optional); `SipJsAdapter` implements it.
+- No change for apps that do not use these. Android incoming-call pushes are still delivered by the app's own handler, which calls `reportIncomingCall` and `registerPushCall`.
+
 ## 0.2.1
 
 - Active call screen: the destination, status and timer sit on a frosted translucent panel so they stay readable over any landmark photo. Larger, bolder text: the number (36, or 26 under a contact name), the call stage in words ("Calling…", "Ringing…", "Connected" with a green dot, "On hold", "Call ended"; 24) and the timer on its own line (46).

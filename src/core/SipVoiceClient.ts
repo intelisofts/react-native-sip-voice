@@ -1,4 +1,5 @@
 import { Call } from "./Call";
+import type { AnswerGate } from "./Call";
 import { EventEmitter, ReadonlyValueStream, Subscription, ValueStream } from "./observable";
 import type { IncomingInvite, SignalingAdapter } from "./signaling";
 import {
@@ -42,7 +43,10 @@ export interface SipVoiceClientDeps {
   now?: () => number;
 }
 
+/** How long unregister() waits for the SBC before closing the connection anyway. */
+const UNREGISTER_TIMEOUT_MS = 1500;
 const PUSH_MATCH_WINDOW_MS = 60_000;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 function assertHeaderSafe(name: string, value: string): void {
   if (/[\r\n]/.test(name) || /[\r\n]/.test(value)) {
@@ -83,6 +87,7 @@ export class SipVoiceClient {
   private readonly timers = new Set<ReturnType<typeof setTimeout>>();
   private readonly setupTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
   private pendingPushCalls: PendingPushCall[] = [];
+  private answerGate?: AnswerGate;
   private destroyed = false;
 
   constructor(options: SipVoiceClientOptions = {}, deps?: Partial<SipVoiceClientDeps>) {
@@ -105,7 +110,7 @@ export class SipVoiceClient {
 
   private static defaultAdapter(logger: Logger): SignalingAdapter {
     // Lazy so tests / custom adapters never load SIP.js or react-native-webrtc.
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { SipJsAdapter } = require("../sip/SipJsAdapter") as typeof import("../sip/SipJsAdapter");
     return new SipJsAdapter({ logger });
   }
@@ -183,6 +188,17 @@ export class SipVoiceClient {
     }
   }
 
+  /**
+   * Renew the registration with fresh credentials (e.g. a new short-lived token) on the open connection,
+   * so the WebSocket is not torn down. Falls back to a full connect() when not connected.
+   */
+  async refreshRegistration(credentials: SipCredentials): Promise<void> {
+    if (!this.isConnected || !this.adapter.refreshRegistration) return this.connect(credentials);
+    validateCredentials(credentials);
+    await this.adapter.refreshRegistration(credentials);
+    this.credentials = credentials;
+  }
+
   /** Close the connection. Active calls are hung up first. */
   async disconnect(): Promise<void> {
     this.intentionalDisconnect = true;
@@ -192,6 +208,34 @@ export class SipVoiceClient {
     this.credentials = undefined;
     await this.adapter.disconnect();
     this.connection.next(ConnectionState.DISCONNECTED);
+  }
+
+  /**
+   * Stop being reachable: un-register from the SBC and close the connection. Meant for when the app goes
+   * to the background. A live call is never touched, so with one in progress this does nothing and
+   * returns false. A slow or failing server never holds it up: the connection is closed regardless.
+   */
+  async unregister(): Promise<boolean> {
+    if (this.liveCalls().length > 0) return false;
+    const unregistering = Promise.resolve(this.adapter.unregister?.()).catch((e) =>
+      this.log.debug("Un-register failed", e),
+    );
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, UNREGISTER_TIMEOUT_MS);
+    });
+    await Promise.race([unregistering, timeout]);
+    if (timer) clearTimeout(timer);
+    await this.disconnect();
+    return true;
+  }
+
+  /**
+   * Run `gate` when the user accepts an incoming call, before it is answered. Return false (or throw) to
+   * give the call up. Pass undefined to remove it. Applies to calls already ringing.
+   */
+  setAnswerGate(gate: AnswerGate | undefined): void {
+    this.answerGate = gate;
   }
 
   /** Alias of {@link disconnect}. */
@@ -371,14 +415,18 @@ export class SipVoiceClient {
 
   private onIncomingInvite(invite: IncomingInvite): void {
     const push = this.takePushCall(invite.headers);
+    // Same id as the VoIP push (CallKit already shows it under that id), so the call is not reported twice.
+    const headerId = invite.headers["x-call-id"]?.toLowerCase();
+    const id = push?.callId ?? (headerId && UUID_RE.test(headerId) && !this.callsStream.value.some((c) => c.id === headerId) ? headerId : undefined);
     const call = new Call({
-      id: push?.callId,
+      id,
       direction: "incoming",
       destination: invite.from,
       displayName: invite.fromDisplayName ?? invite.from,
       metadata: { headers: invite.headers, fromPush: !!push, pushPayload: push?.payload },
       initialState: CallState.RINGING,
       now: this.now,
+      getAnswerGate: () => this.answerGate,
     });
     call._attachSession(invite.createSession(call, this.options.dtmfMode));
     this.addCall(call);

@@ -62,6 +62,14 @@ public class SipVoiceModule: Module {
       DispatchQueue.main.async { SipVoiceCallManager.shared.reportOutgoingCallConnecting(callId: callId) }
     }
 
+    Function("startRingback") { (callId: String) in
+      DispatchQueue.main.async { SipVoiceCallManager.shared.startRingback(callId: callId) }
+    }
+
+    Function("stopRingback") {
+      DispatchQueue.main.async { SipVoiceCallManager.shared.stopRingback() }
+    }
+
     Function("reportCallConnected") { (callId: String) in
       DispatchQueue.main.async { SipVoiceCallManager.shared.reportCallConnected(callId: callId) }
     }

@@ -16,4 +16,6 @@ android {
 
 dependencies {
   implementation "androidx.core:core-ktx:1.13.1"
+  // Headless JS (HeadlessJsTaskService). The version comes from the app's React Native.
+  implementation "com.facebook.react:react-android"
 }

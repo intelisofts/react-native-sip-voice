@@ -7,6 +7,8 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.media.AudioAttributes
+import android.media.RingtoneManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -16,7 +18,9 @@ object SipVoiceNotifications {
   const val ONGOING_ID = 7301
   private const val INCOMING_BASE_ID = 7400
   private const val CHANNEL_ONGOING = "sipvoice_ongoing"
-  private const val CHANNEL_INCOMING = "sipvoice_incoming"
+  // A channel's sound can't change after it is created, so the ringing channel has a new id; the old one is removed.
+  private const val CHANNEL_INCOMING = "sipvoice_incoming_ring"
+  private const val CHANNEL_INCOMING_OLD = "sipvoice_incoming"
   const val ACTION_HANGUP = "expo.modules.sipvoice.HANGUP"
   const val ACTION_ANSWER = "expo.modules.sipvoice.ANSWER"
   const val EXTRA_CALL_ID = "callId"
@@ -28,9 +32,19 @@ object SipVoiceNotifications {
       NotificationChannel(CHANNEL_ONGOING, config.channelName ?: "Ongoing calls", NotificationManager.IMPORTANCE_LOW)
         .apply { setShowBadge(false) }
     )
+    nm.deleteNotificationChannel(CHANNEL_INCOMING_OLD)
+    val ringtone = AudioAttributes.Builder()
+      .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+      .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+      .build()
     nm.createNotificationChannel(
-      NotificationChannel(CHANNEL_INCOMING, "Incoming calls", NotificationManager.IMPORTANCE_HIGH)
-        .apply { setShowBadge(false) }
+      NotificationChannel(CHANNEL_INCOMING, "Incoming calls", NotificationManager.IMPORTANCE_HIGH).apply {
+        setShowBadge(false)
+        setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE), ringtone)
+        enableVibration(true)
+        vibrationPattern = longArrayOf(0, 1000, 1000)
+        lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+      }
     )
   }
 
@@ -85,7 +99,17 @@ object SipVoiceNotifications {
     ensureChannels(context, SipVoiceCallManager.config)
     val person = Person.Builder().setName(record.displayName.ifBlank { record.handle }).setImportant(true).build()
     val decline = actionIntent(context, ACTION_HANGUP, record.callId, record.callId.hashCode())
-    val answer = actionIntent(context, ACTION_ANSWER, record.callId, record.callId.hashCode() + 1)
+    // Answer opens an activity directly: Android 12+ blocks a broadcast receiver from opening the app
+    // ("notification trampoline"), which left the call answered but the app in the background.
+    val answer = PendingIntent.getActivity(
+      context, record.callId.hashCode() + 1, SipVoiceIncomingCallActivity.answerIntent(context, record.callId),
+      PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+    )
+    // The screen starts a closed app underneath itself, so the app boots, registers and receives the call while
+    // the phone is still ringing: Answer then connects at once (see SipVoiceCallManager.startAppUnder).
+    val incomingScreen = PendingIntent.getActivity(context, record.callId.hashCode() + 2,
+      SipVoiceIncomingCallActivity.intent(context, record.callId).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+      PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
     val notification = NotificationCompat.Builder(context, CHANNEL_INCOMING)
       .setSmallIcon(smallIcon(context))
       .setContentTitle(record.displayName.ifBlank { record.handle })
@@ -93,9 +117,13 @@ object SipVoiceNotifications {
       .setCategory(NotificationCompat.CATEGORY_CALL)
       .setPriority(NotificationCompat.PRIORITY_MAX)
       .setOngoing(true)
-      .setFullScreenIntent(launchIntent(context), true)
+      .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+      .setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)) // before Android 8 (no channels)
+      .setContentIntent(incomingScreen) // tapping the heads-up opens the same screen
+      .setFullScreenIntent(incomingScreen, true) // locked or screen off: shown straight away
       .setStyle(NotificationCompat.CallStyle.forIncomingCall(person, decline, answer))
       .build()
+      .apply { flags = flags or Notification.FLAG_INSISTENT } // ring and vibrate until answered, declined or ended
     try {
       NotificationManagerCompat.from(context).notify(INCOMING_BASE_ID + (record.callId.hashCode() and 0xff), notification)
     } catch (e: SecurityException) {
@@ -115,14 +143,7 @@ class SipVoiceActionReceiver : BroadcastReceiver() {
     val callId = intent.getStringExtra(SipVoiceNotifications.EXTRA_CALL_ID) ?: return
     when (intent.action) {
       SipVoiceNotifications.ACTION_HANGUP -> SipVoiceCallManager.onSystemEnd(callId)
-      SipVoiceNotifications.ACTION_ANSWER -> {
-        SipVoiceCallManager.connections[callId]?.setActive()
-        SipVoiceCallManager.onSystemAnswer(callId)
-        context.packageManager.getLaunchIntentForPackage(context.packageName)?.let {
-          it.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
-          context.startActivity(it)
-        }
-      }
+      SipVoiceNotifications.ACTION_ANSWER -> SipVoiceCallManager.answerFromSystem(context, callId)
     }
   }
 }

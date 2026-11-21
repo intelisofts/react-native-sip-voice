@@ -4,11 +4,13 @@ import { useEffect, useRef } from "react";
 import { ActivityIndicator, Animated, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { useTopInset } from "../hooks/useTopInset";
+
 import { CallLabels, defaultLabels } from "../labels";
 import type { Landmark } from "../landmarks/resolver";
 import { CallUITheme, defaultCallUITheme } from "../theme";
 import { Avatar } from "./Avatar";
-import { ControlButton } from "./ControlButton";
+import { EndCallBar } from "./EndCallBar";
 import { LandmarkBackground } from "./LandmarkBackground";
 
 export type PreparingStepState = "pending" | "active" | "done" | "error";
@@ -30,12 +32,16 @@ export interface PreparingCall {
   displayName?: string;
   /** Headline under the name, e.g. "Checking your plan…". */
   status?: string;
+  /** Shown as a small label under the name when known; omitted (not "Offline") when not. */
+  calleeOnline?: boolean;
   /** Optional progress checklist. */
   steps?: PreparingStep[];
   /** Custom panel above the end button, e.g. a price confirmation card. */
   panel?: React.ReactNode;
   /** Error to show instead of progress. */
   error?: string;
+  /** Reserved space above the end button, e.g. the ad slot on a free call. Stays put when it is empty. */
+  footer?: React.ReactNode;
   /** Called when the user taps End / Close. */
   onCancel: () => void;
 }
@@ -52,46 +58,58 @@ export interface PreparingCallScreenProps {
 export function PreparingCallScreen({
   preparing,
   landmark,
-  subtitle,
   theme = defaultCallUITheme,
   labels = defaultLabels,
-  blurRadius,
 }: PreparingCallScreenProps) {
   const insets = useSafeAreaInsets();
-  const { phoneNumber, displayName, status, steps, panel, error, onCancel } = preparing;
+  const topInset = useTopInset();
+  const { phoneNumber, displayName, status, steps, panel, error, onCancel, footer, calleeOnline } = preparing;
   const name = displayName || phoneNumber;
 
   return (
-    <LandmarkBackground landmark={landmark} blurRadius={blurRadius}>
+    <LandmarkBackground landmark={landmark}>
       <View
-        style={[styles.container, { paddingTop: insets.top + 52, paddingBottom: insets.bottom + 16 }]}
+        style={[styles.container, { paddingTop: topInset + 12, paddingBottom: insets.bottom + 16 }]}
         testID="preparing-call-screen"
       >
-        {landmark ? (
-          <View style={styles.chip} testID="preparing-country-chip">
-            <Text style={styles.flag}>{landmark.flag}</Text>
-            <Text style={[styles.chipText, { color: theme.text }]} numberOfLines={1}>
-              {landmark.country}
-            </Text>
-          </View>
-        ) : null}
+        {/* Same top row as the active call: the country pill sits in the flow, below the camera. */}
+        <View style={styles.topBar}>
+          {landmark ? (
+            <View style={styles.chip} testID="preparing-country-chip">
+              <Text style={styles.flag}>{landmark.flag}</Text>
+              <Text style={[styles.chipText, { color: theme.text }]} numberOfLines={1}>
+                {landmark.country}
+              </Text>
+            </View>
+          ) : null}
+        </View>
 
         <View style={styles.identity}>
-          <Avatar name={name} pulsing={!error} textColor={theme.text} />
+          {<Avatar name={name} pulsing={!error} textColor={theme.text} />}
           <Text style={[styles.name, { color: theme.text, fontFamily: theme.fontFamily }]} numberOfLines={1} testID="preparing-name">
             {name}
           </Text>
           {name !== phoneNumber && (
             <Text style={[styles.number, { color: theme.textSecondary }]}>{phoneNumber}</Text>
           )}
-          <Text
-            style={[styles.status, { color: error ? theme.danger : theme.textSecondary }]}
-            testID="preparing-status"
-            accessibilityLiveRegion="polite"
-          >
-            {error ?? status ?? labels.connecting}
-          </Text>
-          {!!subtitle && !error && <Text style={[styles.subtitle, { color: theme.textSecondary }]}>{subtitle}</Text>}
+          {calleeOnline && !error && (
+            <View style={styles.onlineRow} testID="preparing-callee-online">
+              <View style={[styles.onlineDot, { backgroundColor: theme.accent }]} />
+              <Text style={[styles.onlineText, { color: theme.textSecondary }]}>{labels.online ?? "Online"}</Text>
+            </View>
+          )}
+          {error && panel ? null /* the panel below carries the message: show it once */ : error ? (
+            <View style={styles.errorPanel} testID="preparing-error" accessibilityRole="alert">
+              <Ionicons name="alert-circle" size={20} color={theme.danger} />
+              <Text style={[styles.errorText, { color: theme.text }]} testID="preparing-status" accessibilityLiveRegion="polite">
+                {error}
+              </Text>
+            </View>
+          ) : (
+            <Text style={[styles.status, { color: theme.text }]} testID="preparing-status" accessibilityLiveRegion="polite">
+              {status ?? labels.connecting}
+            </Text>
+          )}
         </View>
 
         <View style={styles.middle}>
@@ -104,14 +122,14 @@ export function PreparingCallScreen({
           </View>
         ) : null}
 
+        {footer ? <View style={styles.footerWrap}>{footer}</View> : null}
+
         <View style={styles.endRow}>
-          <ControlButton
+          <EndCallBar
             testID="preparing-cancel"
             icon={error ? "close" : "call"}
-            iconRotation={error ? undefined : 135}
+            tone={error ? "danger" : "neutral"}
             label={error ? labels.hide : labels.end}
-            variant="danger"
-            size={70}
             onPress={onCancel}
             theme={theme}
           />
@@ -161,26 +179,42 @@ function StepRow({ step, theme }: { step: PreparingStep; theme: CallUITheme }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, paddingHorizontal: 16 },
+  container: { flex: 1, paddingHorizontal: 24 },
+  topBar: { height: 44, flexDirection: "row", alignItems: "center", justifyContent: "center" },
   chip: {
-    position: "absolute",
-    top: 0,
-    alignSelf: "center",
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "rgba(0,0,0,0.35)",
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
-    marginTop: 8,
+    maxWidth: 220,
   },
+  errorPanel: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 14,
+    marginHorizontal: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 16,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,255,255,0.2)",
+    maxWidth: 340,
+  },
+  errorText: { flexShrink: 1, fontSize: 14, lineHeight: 19, fontWeight: "600" },
   flag: { fontSize: 16, marginRight: 6 },
   chipText: { fontSize: 13, fontWeight: "600" },
-  identity: { alignItems: "center", marginTop: 12 },
-  name: { fontSize: 30, fontWeight: "600", marginTop: 4, textAlign: "center", maxWidth: "90%" },
-  number: { fontSize: 16, marginTop: 4 },
-  status: { fontSize: 17, marginTop: 8, textAlign: "center", paddingHorizontal: 24 },
-  subtitle: { fontSize: 13, marginTop: 4 },
+  identity: { alignItems: "center", marginTop: 28 },
+  name: { fontSize: 30, fontWeight: "700", marginTop: 12, textAlign: "center", maxWidth: "90%" },
+  number: { fontSize: 17, fontWeight: "500", marginTop: 4 },
+  onlineRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 6 },
+  onlineDot: { width: 8, height: 8, borderRadius: 4 },
+  onlineText: { fontSize: 13, fontWeight: "600" },
+  status: { fontSize: 18, fontWeight: "600", marginTop: 12, textAlign: "center", paddingHorizontal: 24 },
+  subtitle: { fontSize: 14, marginTop: 4 },
   middle: { flex: 1, justifyContent: "center", alignItems: "center" },
   steps: {
     borderRadius: 24,
@@ -196,5 +230,6 @@ const styles = StyleSheet.create({
   dot: { width: 10, height: 10, borderRadius: 5, borderWidth: 1.5 },
   stepLabel: { fontSize: 15, fontWeight: "500" },
   panelWrap: { marginBottom: 20 },
-  endRow: { alignItems: "center", marginTop: 8 },
+  endRow: { alignSelf: "stretch", marginTop: 16 },
+  footerWrap: { alignSelf: "stretch", marginTop: 8 },
 });

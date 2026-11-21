@@ -56,6 +56,9 @@ export interface NativeCallUI {
   startOutgoingCall(callId: string, handle: string, displayName: string): Promise<void>;
   /** Remote is ringing. */
   reportOutgoingCallConnecting(callId: string): void;
+  /** Play the ring-back the caller hears while the other side rings (until stopRingback or the call ends). */
+  startRingback(callId: string): void;
+  stopRingback(): void;
   reportCallConnected(callId: string): void;
   reportIncomingCall(callId: string, handle: string, displayName: string): Promise<void>;
   /** Call ended by something other than the local user (remote hangup, failure). */
@@ -69,7 +72,7 @@ export interface NativeCallUI {
   getAudioRoutes(): Promise<{ current: AudioRoute; available: AudioRoute[] }>;
   registerVoipPush(): void;
   getVoipPushToken(): Promise<string | null>;
-  getPendingPushCalls(): Promise<{ callId: string; payload: Record<string, unknown> }[]>;
+  getPendingPushCalls(): Promise<PendingPushCall[]>;
   addListener<K extends keyof NativeCallUIEvents>(
     event: K,
     listener: (payload: NativeCallUIEvents[K]) => void,
@@ -80,6 +83,9 @@ interface ExpoSipVoiceModule {
   configure(config: NativeCallUIConfig): Promise<void>;
   startOutgoingCall(callId: string, handle: string, displayName: string): Promise<void>;
   reportOutgoingCallConnecting(callId: string): void;
+  /** Optional: only the iOS module has ring-back. */
+  startRingback?(callId: string): void;
+  stopRingback?(): void;
   reportCallConnected(callId: string): void;
   reportIncomingCall(callId: string, handle: string, displayName: string): Promise<void>;
   reportCallEnded(callId: string, reason: NativeEndReason): void;
@@ -91,14 +97,40 @@ interface ExpoSipVoiceModule {
   getAudioRoutes(): Promise<{ current: AudioRoute; available: AudioRoute[] }>;
   registerVoipPush(): void;
   getVoipPushToken(): Promise<string | null>;
-  getPendingPushCalls(): Promise<{ callId: string; payload: Record<string, unknown> }[]>;
+  getPendingPushCalls(): Promise<PendingPushCall[]>;
   addListener(event: string, listener: (payload: any) => void): { remove(): void };
+  /** Android only (see androidCallSetup). */
+  getCalls?(): Promise<NativeCallSnapshot[]>;
+  canUseFullScreenIntent?(): boolean;
+  openFullScreenIntentSettings?(): void;
+  isIgnoringBatteryOptimizations?(): boolean;
+  openBatteryOptimizationSettings?(): void;
 }
 
-function loadNativeModule(): ExpoSipVoiceModule | null {
+/** A call announced by push before JS was running. `answered`: the user already answered it (Android). */
+export interface PendingPushCall {
+  callId: string;
+  payload: Record<string, unknown>;
+  answered?: boolean;
+  /** Declined on the system screen before JS was running (Android). */
+  declined?: boolean;
+}
+
+/** A call as the Android native side sees it. */
+export interface NativeCallSnapshot {
+  callId: string;
+  handle: string;
+  displayName: string;
+  outgoing: boolean;
+  state: "ringing" | "dialing" | "remoteRinging" | "connecting" | "active" | "held";
+  connectedAt: number | null;
+  muted: boolean;
+}
+
+export function loadNativeModule(): ExpoSipVoiceModule | null {
   if (Platform.OS !== "ios" && Platform.OS !== "android") return null;
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { requireOptionalNativeModule } = require("expo") as typeof import("expo");
     return requireOptionalNativeModule<ExpoSipVoiceModule>("SipVoice");
   } catch {
@@ -119,6 +151,12 @@ export class ExpoNativeCallUI implements NativeCallUI {
   }
   reportOutgoingCallConnecting(callId: string) {
     this.native.reportOutgoingCallConnecting(callId);
+  }
+  startRingback(callId: string) {
+    this.native.startRingback?.(callId);
+  }
+  stopRingback() {
+    this.native.stopRingback?.();
   }
   reportCallConnected(callId: string) {
     this.native.reportCallConnected(callId);
@@ -171,6 +209,8 @@ export class NoopNativeCallUI implements NativeCallUI {
   async configure() {}
   async startOutgoingCall() {}
   reportOutgoingCallConnecting() {}
+  startRingback() {}
+  stopRingback() {}
   reportCallConnected() {}
   async reportIncomingCall() {}
   reportCallEnded() {}

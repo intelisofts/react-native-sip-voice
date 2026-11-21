@@ -36,6 +36,10 @@ export class FakeAdapter implements SignalingAdapter {
   disconnect = jest.fn(async () => {
     this.connected = false;
   });
+  unregister = jest.fn(async () => {});
+  refreshRegistration = jest.fn(async (credentials: SipCredentials) => {
+    this.lastCredentials = credentials;
+  });
   isConnected = () => this.connected;
   invite = jest.fn((request: OutgoingInviteRequest, events: CallSessionEvents) => {
     const session = new FakeSession(events);
@@ -93,6 +97,8 @@ export class FakeNative implements NativeCallUI {
   configure = jest.fn(async () => {});
   startOutgoingCall = jest.fn(async () => {});
   reportOutgoingCallConnecting = jest.fn();
+  startRingback = jest.fn();
+  stopRingback = jest.fn();
   reportCallConnected = jest.fn();
   reportIncomingCall = jest.fn(async () => {});
   reportCallEnded = jest.fn();
@@ -104,7 +110,7 @@ export class FakeNative implements NativeCallUI {
   getAudioRoutes = jest.fn(async () => ({ current: "earpiece" as const, available: ["earpiece" as const, "speaker" as const] }));
   registerVoipPush = jest.fn();
   getVoipPushToken = jest.fn(async () => null);
-  getPendingPushCalls = jest.fn(async (): Promise<{ callId: string; payload: Record<string, unknown> }[]> => []);
+  getPendingPushCalls = jest.fn(async (): Promise<{ callId: string; payload: Record<string, unknown>; answered?: boolean; declined?: boolean }[]> => []);
 
   addListener<K extends keyof NativeCallUIEvents>(event: K, listener: (payload: NativeCallUIEvents[K]) => void) {
     const set = this.listeners.get(event) ?? new Set();

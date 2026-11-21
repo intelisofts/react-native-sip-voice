@@ -28,6 +28,32 @@
       android:exported="false"
       android:foregroundServiceType="microphone|phoneCall" />
 
+    <!-- Full-screen incoming call, on top of the app in its task: the app boots behind it while the phone rings.
+         After Decline on a locked phone the app hides behind the lock screen again (no call left, see applyLockScreen). -->
+    <activity
+      android:name="expo.modules.sipvoice.SipVoiceIncomingCallActivity"
+      android:exported="false"
+      android:launchMode="singleTop"
+      android:showWhenLocked="true"
+      android:turnScreenOn="true"
+      android:screenOrientation="portrait"
+      android:theme="@android:style/Theme.Material.NoActionBar.Fullscreen" />
+
+    <!-- Native in-call screen, shown the moment a call is answered. Same task as the app, which runs the call. -->
+    <activity
+      android:name="expo.modules.sipvoice.SipVoiceActiveCallActivity"
+      android:exported="false"
+      android:launchMode="singleTop"
+      android:showWhenLocked="true"
+      android:turnScreenOn="true"
+      android:screenOrientation="portrait"
+      android:theme="@android:style/Theme.Material.NoActionBar.Fullscreen" />
+
+    <!-- React Native's Headless JS: keeps the app's JS running while an incoming call is live, see the class. -->
+    <service
+      android:name="expo.modules.sipvoice.SipVoiceCallTaskService"
+      android:exported="false" />
+
     <receiver
       android:name="expo.modules.sipvoice.SipVoiceActionReceiver"
       android:exported="false" />

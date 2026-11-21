@@ -44,10 +44,10 @@ describe("reasonFromStatusCode", () => {
   it.each([
     [486, "busy"],
     [600, "busy"],
-    [480, "no_answer"],
-    [408, "no_answer"],
+    [480, "unavailable"], // the SBC: the phone had no registration and did not wake in time
+    [408, "unavailable"], // the callee's phone did not answer: offline, no internet, or rang out
     [403, "rejected"],
-    [603, "rejected"],
+    [603, "busy"],
     [404, "unavailable"],
     [503, "unavailable"],
     [500, "failed"],

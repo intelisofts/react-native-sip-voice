@@ -56,15 +56,17 @@ export function CallConfirmPanel({
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 28,
+    borderRadius: 22,
     overflow: "hidden",
-    padding: 20,
-    backgroundColor: "rgba(20,20,20,0.35)",
+    padding: 16,
+    backgroundColor: "rgba(20,20,26,0.7)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,255,255,0.14)",
   },
   header: { flexDirection: "row", alignItems: "center", gap: 10 },
   iconWrap: { width: 32, height: 32, borderRadius: 10, alignItems: "center", justifyContent: "center" },
   title: { fontSize: 14, fontWeight: "600", flex: 1 },
-  highlight: { fontSize: 34, fontWeight: "700", marginTop: 12, letterSpacing: -0.5, fontVariant: ["tabular-nums"] },
+  highlight: { fontSize: 30, fontWeight: "700", marginTop: 12, letterSpacing: -0.5, fontVariant: ["tabular-nums"] },
   row: { flexDirection: "row", justifyContent: "space-between", marginTop: 8 },
   rowLabel: { fontSize: 14 },
   rowValue: { fontSize: 14, fontWeight: "600" },

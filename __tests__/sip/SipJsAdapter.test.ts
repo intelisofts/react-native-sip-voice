@@ -73,6 +73,7 @@ jest.mock("sip.js", () => {
       };
     }
     accept = jest.fn(async () => {});
+    progress = jest.fn(async () => {});
     reject = jest.fn(async (_opts?: any) => this.setState("Terminated"));
   }
   class UserAgent {
@@ -103,8 +104,7 @@ jest.mock("sip.js", () => {
   return { SessionState, Inviter, Invitation, UserAgent, Registerer, Web };
 });
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const sip = require("sip.js");
+const sip = jest.requireMock("sip.js");
 
 function events() {
   return { onConnectionStateChange: jest.fn(), onIncomingInvite: jest.fn() };
@@ -177,6 +177,25 @@ describe("SipJsAdapter.connect", () => {
       extraHeaders: ["Authorization: Bearer jwt.token.value"],
     });
     expect(mockState.registerers[0].register).toHaveBeenCalled();
+  });
+
+  it("un-registers with the token header (SIP.js drops the constructor headers on unregister)", async () => {
+    const adapter = new SipJsAdapter();
+    await adapter.connect({ ...tokenCreds, register: true }, events());
+    await adapter.unregister();
+    expect(mockState.registerers[0].unregister).toHaveBeenCalledWith({
+      requestOptions: { extraHeaders: ["Authorization: Bearer jwt.token.value"] },
+    });
+  });
+
+  it("refreshRegistration re-REGISTERs with the new token on the same user agent", async () => {
+    const adapter = new SipJsAdapter();
+    await adapter.connect({ ...tokenCreds, register: true }, events());
+    await adapter.refreshRegistration({ ...tokenCreds, register: true, token: "fresh" });
+    expect(mockState.uas).toHaveLength(1); // no reconnect
+    expect(mockState.registerers[0].register).toHaveBeenLastCalledWith({
+      requestOptions: { extraHeaders: ["Authorization: Bearer fresh"] },
+    });
   });
 
   it("maps transport disconnects to connection states", async () => {
@@ -346,14 +365,31 @@ describe("SipJsAdapter.invite", () => {
     expect(ev2.onEnded).toHaveBeenCalledWith("local_hangup", undefined);
   });
 
-  it("hangup sends BYE/CANCEL without waiting for the SBC to answer", async () => {
-    const adapter = await connected();
+  it("sends the call token on the BYE, so the SBC relays it to the other side", async () => {
+    const adapter = await connected(tokenCreds);
     const s = adapter.invite({ targetUri: "sip:1@x", extraHeaders: [], dtmfMode: "auto" }, callEvents());
-    const inviter = mockState.inviters[0];
-    inviter.setState("Established");
-    inviter.bye.mockImplementationOnce(() => new Promise(() => {})); // SBC never replies
-    await s.hangup(); // must still resolve
-    expect(inviter.bye).toHaveBeenCalled();
+    mockState.inviters[0].setState("Established");
+    await s.hangup();
+    expect(mockState.inviters[0].bye).toHaveBeenCalledWith({
+      requestOptions: { extraHeaders: ["Authorization: Bearer jwt.token.value"] },
+    });
+  });
+
+  it("hangup still resolves (after a bounded wait) when the SBC never replies to the BYE", async () => {
+    jest.useFakeTimers();
+    try {
+      const adapter = await connected();
+      const s = adapter.invite({ targetUri: "sip:1@x", extraHeaders: [], dtmfMode: "auto" }, callEvents());
+      const inviter = mockState.inviters[0];
+      inviter.setState("Established");
+      inviter.bye.mockImplementationOnce(() => new Promise(() => {})); // SBC never replies
+      const done = s.hangup();
+      await jest.advanceTimersByTimeAsync(5_000);
+      await done; // must still resolve, bounded by the hangup signal timeout
+      expect(inviter.bye).toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it("mutes audio senders, including after establishment", async () => {
@@ -457,6 +493,7 @@ describe("SipJsAdapter incoming", () => {
     expect(invite.from).toBe("+33123456789");
     expect(invite.fromDisplayName).toBe("Marie");
     expect(invite.headers["x-call-id"]).toBe("push-1");
+    expect(invitation.progress).toHaveBeenCalledTimes(1); // 180 Ringing back to the caller
 
     const cev = callEvents();
     const session = invite.createSession(cev, "auto");
@@ -467,20 +504,31 @@ describe("SipJsAdapter incoming", () => {
     invitation.state = "Establishing";
     await session.hangup();
     expect(invitation.reject).toHaveBeenCalledTimes(2);
+    // Declining from the system call screen: 603, never sip.js's default 480 ("could not be reached")
+    expect(invitation.reject).toHaveBeenLastCalledWith({ statusCode: 603 });
+  });
+
+  it("turns a call down with 486 when already busy on another call", async () => {
+    const adapter = new SipJsAdapter();
+    const ev = events();
+    await adapter.connect(digestCreds, ev);
+    const invitation = new sip.Invitation();
+    mockState.uas[0].options.delegate.onInvite(invitation);
+    const session = ev.onIncomingInvite.mock.calls[0][0].createSession(callEvents(), "auto");
+    await session.reject(486);
+    expect(invitation.reject).toHaveBeenCalledWith({ statusCode: 486 });
   });
 });
 
 describe("media", () => {
   it("requests audio-only from react-native-webrtc", async () => {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const webrtc = require("react-native-webrtc");
+    const webrtc = jest.requireActual("react-native-webrtc");
     await reactNativeMediaStreamFactory();
     expect(webrtc.mediaDevices.getUserMedia).toHaveBeenCalledWith({ audio: true, video: false });
   });
 
   it("registers WebRTC globals once", async () => {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const webrtc = require("react-native-webrtc");
+    const webrtc = jest.requireActual("react-native-webrtc");
     webrtc.registerGlobals.mockClear();
     await new SipJsAdapter().connect(digestCreds, events());
     await new SipJsAdapter().connect(digestCreds, events());

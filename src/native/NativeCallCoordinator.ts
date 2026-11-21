@@ -10,6 +10,23 @@ import type { AudioRoute, NativeCallUI, NativeCallUIConfig, NativeEndReason } fr
  * - call lifecycle → native reports (start, ringing, connected, ended, mute, hold)
  * - native actions (lock-screen end, Bluetooth mute, car-kit answer, …) → call methods
  */
+const shared = new WeakMap<SipVoiceClient, NativeCallCoordinator>();
+
+/**
+ * The one coordinator for a client, shared by <SipVoiceProvider> and code that runs without React (the Android
+ * incoming-call Headless JS task, see registerIncomingCallTask). Two coordinators would each handle every native
+ * action. Null when the client was created with `nativeCallUI: false`.
+ */
+export function getNativeCallCoordinator(client: SipVoiceClient, native: NativeCallUI): NativeCallCoordinator | null {
+  if (!client.nativeCallUIEnabled) return null;
+  let coordinator = shared.get(client);
+  if (!coordinator) {
+    coordinator = new NativeCallCoordinator(client, native);
+    shared.set(client, coordinator);
+  }
+  return coordinator;
+}
+
 export class NativeCallCoordinator {
   private readonly subs: Subscription[] = [];
   private readonly perCall = new Map<string, Subscription[]>();
@@ -17,6 +34,8 @@ export class NativeCallCoordinator {
   private readonly reported = new Set<string>();
   /** Answer actions that arrived before the SIP INVITE (push flow). */
   private readonly pendingAnswers = new Set<string>();
+  /** Declines that arrived before the SIP INVITE: rejected as soon as it arrives, so it does not ring again. */
+  private readonly pendingDeclines = new Set<string>();
   private readonly log: Logger;
   private started = false;
 
@@ -45,6 +64,7 @@ export class NativeCallCoordinator {
       this.native.addListener("endCall", ({ callId }) => {
         const call = this.client.getCall(callId);
         if (call && !call.isTerminated) call.hangup("native_ui");
+        else if (!call) this.pendingDeclines.add(callId);
         this.reported.delete(callId);
       }),
       this.native.addListener("answerCall", ({ callId }) => {
@@ -74,6 +94,9 @@ export class NativeCallCoordinator {
       for (const p of await this.native.getPendingPushCalls()) {
         this.reported.add(p.callId);
         this.client.registerPushCall(p.callId, p.payload);
+        // Answered on the lock screen / notification while JS was not running: answer once the INVITE arrives.
+        if (p.declined) this.pendingDeclines.add(p.callId);
+        else if (p.answered) this.pendingAnswers.add(p.callId);
       }
     } catch {
       // Older native builds may not implement this.
@@ -92,6 +115,7 @@ export class NativeCallCoordinator {
         this.perCall.delete(id);
         this.reported.delete(id);
         this.pendingAnswers.delete(id);
+        this.pendingDeclines.delete(id);
       }
     }
   }
@@ -99,6 +123,13 @@ export class NativeCallCoordinator {
   private track(call: Call): void {
     const subs: Subscription[] = [];
     this.perCall.set(call.id, subs);
+
+    // Declined on the system screen before the INVITE came: reject it (603), without showing it again.
+    if (this.pendingDeclines.delete(call.id)) {
+      this.pendingAnswers.delete(call.id);
+      call.hangup("native_ui").catch((e) => this.log.warn("deferred decline failed", e));
+      return;
+    }
 
     if (!this.reported.has(call.id)) {
       this.reported.add(call.id);
@@ -121,9 +152,14 @@ export class NativeCallCoordinator {
       call.callState$.subscribe((state) => {
         switch (state) {
           case CallState.RINGING:
-            if (call.direction === "outgoing") this.native.reportOutgoingCallConnecting(call.id);
+            if (call.direction === "outgoing") {
+              this.native.reportOutgoingCallConnecting(call.id);
+              // Free app calls: the caller hears the ring-back from the phone. Paid calls get it from the network.
+              if (call.metadata.kind === "app") this.native.startRingback(call.id);
+            }
             break;
           case CallState.ACTIVE:
+            this.native.stopRingback();
             if (!wasConnected) {
               wasConnected = true;
               this.native.reportCallConnected(call.id);
@@ -131,6 +167,7 @@ export class NativeCallCoordinator {
             break;
           case CallState.ENDED:
           case CallState.FAILED:
+            this.native.stopRingback();
             this.onTerminated(call);
             break;
           default:
@@ -163,6 +200,7 @@ export class NativeCallCoordinator {
     this.perCall.clear();
     this.reported.clear();
     this.pendingAnswers.clear();
+    this.pendingDeclines.clear();
     this.started = false;
   }
 }
@@ -174,6 +212,8 @@ function toNativeReason(call: Call): NativeEndReason {
     case "no_answer":
     case "timeout":
       return "unanswered";
+    case "answered_elsewhere":
+      return "answeredElsewhere";
     case "rejected":
     case "busy":
       return call.direction === "incoming" ? "declinedElsewhere" : "failed";

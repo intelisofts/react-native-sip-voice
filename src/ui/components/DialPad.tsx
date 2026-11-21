@@ -22,15 +22,21 @@ export interface DialPadProps {
   /** Digits sent so far, shown above the pad. */
   entered?: string;
   theme?: CallUITheme;
+  /** Key diameter in points. The caller shrinks it on short screens so the pad never overlaps other content. */
+  keySize?: number;
 }
 
-export function DialPad({ onPress, entered = "", theme = defaultCallUITheme }: DialPadProps) {
+export const DEFAULT_KEY_SIZE = 76;
+
+export function DialPad({ onPress, entered = "", theme = defaultCallUITheme, keySize = DEFAULT_KEY_SIZE }: DialPadProps) {
+  const gap = Math.round((keySize * 18) / DEFAULT_KEY_SIZE);
   return (
     <View style={styles.container} testID="dial-pad">
-      <Text style={[styles.entered, { color: theme.text }]} numberOfLines={1} testID="dial-pad-entered">
+      {/* Head-truncate so the newest digits stay visible when the entry is longer than the line. */}
+      <Text style={[styles.entered, { color: theme.text }]} numberOfLines={1} ellipsizeMode="head" testID="dial-pad-entered">
         {entered}
       </Text>
-      <View style={styles.grid}>
+      <View style={[styles.grid, { width: keySize * 3 + gap * 2, gap }]}>
         {KEYS.map(([digit, letters]) => (
           <Pressable
             key={digit}
@@ -40,10 +46,17 @@ export function DialPad({ onPress, entered = "", theme = defaultCallUITheme }: D
             onPress={() => onPress(digit)}
             style={({ pressed }) => [
               styles.key,
-              { backgroundColor: pressed ? "rgba(255,255,255,0.35)" : theme.controlBackground },
+              {
+                width: keySize,
+                height: keySize,
+                borderRadius: keySize / 2,
+                backgroundColor: pressed ? "rgba(255,255,255,0.35)" : theme.controlBackground,
+              },
             ]}
           >
-            <Text style={[styles.digit, { color: theme.text }]}>{digit}</Text>
+            <Text style={[styles.digit, { color: theme.text, fontSize: Math.round((keySize * 30) / DEFAULT_KEY_SIZE) }]}>
+              {digit}
+            </Text>
             {!!letters && <Text style={[styles.letters, { color: theme.textSecondary }]}>{letters}</Text>}
           </Pressable>
         ))}
@@ -55,8 +68,8 @@ export function DialPad({ onPress, entered = "", theme = defaultCallUITheme }: D
 const styles = StyleSheet.create({
   container: { alignItems: "center", width: "100%" },
   entered: { fontSize: 30, fontWeight: "300", minHeight: 40, marginBottom: 12, letterSpacing: 2 },
-  grid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", width: 276, gap: 18 },
-  key: { width: 76, height: 76, borderRadius: 38, alignItems: "center", justifyContent: "center" },
-  digit: { fontSize: 30, fontWeight: "400" },
+  grid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center" },
+  key: { alignItems: "center", justifyContent: "center" },
+  digit: { fontWeight: "400" },
   letters: { fontSize: 10, letterSpacing: 2, marginTop: -2 },
 });

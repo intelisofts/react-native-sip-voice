@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen } from "@testing-library/react-native";
+import { Text } from "react-native";
 
 import { SipVoiceClient } from "../../src/core/SipVoiceClient";
 import { SipVoiceProvider } from "../../src/react/SipVoiceProvider";
@@ -64,10 +65,33 @@ describe("CallOverlay preparing phase", () => {
     expect(onCancel).toHaveBeenCalled();
   });
 
+  it("uses the same calm layout as the active call: country pill in the top row (not floating), landmark line, avatar shown on the plain background", async () => {
+    const { StyleSheet } = jest.requireActual("react-native");
+    await setup(base({ displayName: "Jane" }));
+    const chip = StyleSheet.flatten(screen.getByTestId("preparing-country-chip").props.style);
+    expect(chip.position).not.toBe("absolute"); // an absolutely placed chip sat behind the camera
+    expect(screen.queryByTestId("preparing-landmark")).toBeNull(); // no point of interest: the flag chip only
+    expect(screen.getByTestId("call-avatar-initials")).toBeTruthy(); // the plain background has no photo, so the avatar shows
+  });
+
+  it("shows an error as a clear message panel with a warning icon, in the same layout", async () => {
+    await setup(base({ error: "Not enough balance" }));
+    expect(screen.getByTestId("preparing-error")).toHaveTextContent(/Not enough balance/);
+    expect(screen.getByTestId("preparing-country-chip")).toBeTruthy();
+    expect(screen.getByTestId("preparing-name")).toBeTruthy();
+  });
+
   it("shows an error with a close button", async () => {
     await setup(base({ error: "Not enough balance" }));
     expect(screen.getByTestId("preparing-status")).toHaveTextContent("Not enough balance");
     expect(screen.getByText("Hide")).toBeTruthy();
+  });
+
+  it("shows the error once: a supplied panel carries the message, so the top panel is not repeated", async () => {
+    await setup(base({ error: "Could not connect", panel: <Text>Could not connect (panel)</Text> }));
+    expect(screen.queryByTestId("preparing-error")).toBeNull();
+    expect(screen.getByText("Could not connect (panel)")).toBeTruthy();
+    expect(screen.getByText("Hide")).toBeTruthy(); // still an error state: the button closes the screen
   });
 
   it("renders a custom panel such as a price confirmation", async () => {

@@ -36,6 +36,13 @@ export interface SignalingAdapter {
   /** Re-open the transport after an unexpected drop, keeping existing sessions. */
   reconnect(): Promise<void>;
   disconnect(): Promise<void>;
+  /**
+   * Tell the server this device is no longer reachable (REGISTER with expiry 0). Optional: an adapter
+   * that cannot do it just returns, and the registration expires on its own.
+   */
+  unregister?(): Promise<void>;
+  /** Re-REGISTER on the open connection with new credentials. Optional: without it the client reconnects instead. */
+  refreshRegistration?(credentials: SipCredentials): Promise<void>;
   isConnected(): boolean;
   invite(request: OutgoingInviteRequest, events: CallSessionEvents): CallSession;
 }

@@ -26,8 +26,14 @@ public final class SipVoiceCallManager: NSObject {
     var outgoing: Bool
     var muted = false
     var held = false
+    /// True once the call has been answered (from CallKit or from the in-app button), so CallKit is told only once.
+    var answered = false
   }
   private var calls: [UUID: CallInfo] = [:]
+  /// Caller-side ring-back: wanted for this call while it rings, played once the audio session is active.
+  private var ringbackCallId: UUID?
+  private var ringbackPlayer: AVAudioPlayer?
+  private var audioSessionActive = false
   private var pendingPushCalls: [[String: Any]] = []
   private var bufferedEvents: [(String, [String: Any])] = []
 
@@ -117,9 +123,51 @@ public final class SipVoiceCallManager: NSObject {
     provider?.reportOutgoingCall(with: uuid, startedConnectingAt: Date())
   }
 
+  /// The other side is ringing: the caller hears the ring-back until the call connects or ends.
+  func startRingback(callId: String) {
+    guard let uuid = UUID(uuidString: callId), calls[uuid]?.outgoing == true else { return }
+    ringbackCallId = uuid
+    if audioSessionActive { playRingback() }
+  }
+
+  func stopRingback() {
+    ringbackCallId = nil
+    ringbackPlayer?.stop()
+    ringbackPlayer = nil
+  }
+
+  private func playRingback() {
+    guard ringbackPlayer == nil else { return }
+    // The pod copies this short caller-side ring-back asset into the app bundle.
+    let url = Bundle.main.url(forResource: "ringback", withExtension: "wav")
+      ?? Bundle(for: SipVoiceCallManager.self).url(forResource: "ringback", withExtension: "wav")
+    guard let url else {
+      NSLog("[SipVoice] ring-back asset not found in bundle")
+      return
+    }
+    do {
+      let player = try AVAudioPlayer(contentsOf: url)
+      player.numberOfLoops = -1
+      player.prepareToPlay()
+      player.play()
+      ringbackPlayer = player
+    } catch {
+      // A missing ring-back must never break the call.
+      NSLog("[SipVoice] ring-back unavailable: \(error.localizedDescription)")
+    }
+  }
+
   func reportCallConnected(callId: String) {
-    guard let uuid = UUID(uuidString: callId), let info = calls[uuid], info.outgoing else { return }
-    provider?.reportOutgoingCall(with: uuid, connectedAt: Date())
+    if ringbackCallId == UUID(uuidString: callId) { stopRingback() }
+    guard let uuid = UUID(uuidString: callId), let info = calls[uuid] else { return }
+    if info.outgoing {
+      provider?.reportOutgoingCall(with: uuid, connectedAt: Date())
+      return
+    }
+    // Incoming call answered inside the app: tell CallKit so its ringing screen becomes a connected call.
+    guard !info.answered else { return }
+    calls[uuid]?.answered = true
+    controller.request(CXTransaction(action: CXAnswerCallAction(call: uuid))) { _ in }
   }
 
   // MARK: - Incoming
@@ -150,6 +198,16 @@ public final class SipVoiceCallManager: NSObject {
     let callerName = (meta["caller_name"] as? String) ?? callerNumber
     let uuid = (meta["call_uuid"] as? String).flatMap(UUID.init(uuidString:)) ?? UUID()
 
+    if (meta["type"] as? String) == "call_ended" {
+      reportCallEndedPush(uuid: uuid, completion: completion)
+      return
+    }
+
+    if calls[uuid] != nil {
+      completion()
+      return
+    }
+
     var jsonPayload: [String: Any] = [:]
     for (k, v) in meta {
       if let key = k as? String, JSONSerialization.isValidJSONObject([key: v]) { jsonPayload[key] = v }
@@ -173,6 +231,22 @@ public final class SipVoiceCallManager: NSObject {
     }
   }
 
+  /// The other side (or the server) ended an answered call while this phone could not hear it.
+  /// A VoIP push must always be shown to CallKit, so an unknown call is reported and ended at once.
+  private func reportCallEndedPush(uuid: UUID, completion: @escaping () -> Void) {
+    ensureProvider()
+    if calls[uuid] != nil {
+      reportCallEnded(callId: Self.id(uuid), reason: "remoteEnded")
+      emit("endCall", ["callId": Self.id(uuid)])
+      completion()
+      return
+    }
+    provider?.reportNewIncomingCall(with: uuid, update: makeUpdate(handle: "Noah Call", name: "Noah Call")) { [weak self] _ in
+      self?.provider?.reportCall(with: uuid, endedAt: Date(), reason: .remoteEnded)
+      completion()
+    }
+  }
+
   func drainPendingPushCalls() -> [[String: Any]] {
     let pending = pendingPushCalls
     pendingPushCalls.removeAll()
@@ -183,6 +257,7 @@ public final class SipVoiceCallManager: NSObject {
 
   func reportCallEnded(callId: String, reason: String) {
     guard let uuid = UUID(uuidString: callId) else { return }
+    if ringbackCallId == uuid { stopRingback() }
     let r: CXCallEndedReason
     switch reason {
     case "remoteEnded": r = .remoteEnded
@@ -196,6 +271,7 @@ public final class SipVoiceCallManager: NSObject {
   }
 
   func endCall(callId: String, completion: @escaping (Error?) -> Void) {
+    if ringbackCallId == UUID(uuidString: callId) { stopRingback() }
     guard let uuid = UUID(uuidString: callId), calls[uuid] != nil else {
       completion(nil)
       return
@@ -280,6 +356,7 @@ public final class SipVoiceCallManager: NSObject {
 
 extension SipVoiceCallManager: CXProviderDelegate {
   public func providerDidReset(_ provider: CXProvider) {
+    stopRingback()
     for uuid in calls.keys { emit("endCall", ["callId": Self.id(uuid)]) }
     calls.removeAll()
     RTCAudioSession.sharedInstance().isAudioEnabled = false
@@ -294,11 +371,16 @@ extension SipVoiceCallManager: CXProviderDelegate {
 
   public func provider(_ provider: CXProvider, perform action: CXAnswerCallAction) {
     configureAudioSession()
-    emit("answerCall", ["callId": Self.id(action.callUUID)])
+    // Skip the answer event when the app answered first (in-app button); JS has already answered the call.
+    if calls[action.callUUID]?.answered != true {
+      calls[action.callUUID]?.answered = true
+      emit("answerCall", ["callId": Self.id(action.callUUID)])
+    }
     action.fulfill()
   }
 
   public func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
+    if ringbackCallId == action.callUUID { stopRingback() }
     calls.removeValue(forKey: action.callUUID)
     emit("endCall", ["callId": Self.id(action.callUUID)])
     action.fulfill()
@@ -328,6 +410,8 @@ extension SipVoiceCallManager: CXProviderDelegate {
   public func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
     RTCAudioSession.sharedInstance().audioSessionDidActivate(audioSession)
     RTCAudioSession.sharedInstance().isAudioEnabled = true
+    audioSessionActive = true
+    if ringbackCallId != nil { playRingback() }
     emit("audioSessionActivated", [:])
     emit("audioRouteChanged", SipVoiceAudioRouter.snapshot())
   }
@@ -335,6 +419,9 @@ extension SipVoiceCallManager: CXProviderDelegate {
   public func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
     RTCAudioSession.sharedInstance().audioSessionDidDeactivate(audioSession)
     RTCAudioSession.sharedInstance().isAudioEnabled = false
+    audioSessionActive = false
+    ringbackPlayer?.stop()
+    ringbackPlayer = nil
     emit("audioSessionDeactivated", [:])
   }
 }

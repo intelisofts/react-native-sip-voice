@@ -1,8 +1,9 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { BlurView } from "expo-blur";
 import { useCallback, useState } from "react";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { LayoutChangeEvent, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { useTopInset } from "../hooks/useTopInset";
 
 import type { Call } from "../../core/Call";
 import { CallState } from "../../core/types";
@@ -13,8 +14,15 @@ import type { Landmark } from "../landmarks/resolver";
 import { CallUITheme, defaultCallUITheme } from "../theme";
 import { Avatar } from "./Avatar";
 import { ControlButton } from "./ControlButton";
-import { DialPad } from "./DialPad";
+import { EndCallBar } from "./EndCallBar";
+import { DEFAULT_KEY_SIZE, DialPad } from "./DialPad";
+
 import { LandmarkBackground } from "./LandmarkBackground";
+// Space the keypad needs besides its keys: the entered-digits line and its margin.
+const DIGITS_LINE_HEIGHT = 52;
+// Four key rows plus three gaps, each gap ~0.24 of a key (see DialPad).
+const KEY_ROWS_FACTOR = 4.72;
+const MIN_KEY_SIZE = 44;
 
 export interface ActiveCallScreenProps {
   call: Call;
@@ -27,15 +35,20 @@ export interface ActiveCallScreenProps {
   onToggleSpeaker: () => void;
   /** Collapse to the "Tap to return to call" banner. Omit to hide the minimize button. */
   onMinimize?: () => void;
+  /** Close the screen once the call has ended or failed. Shown instead of the (disabled) end-call bar. */
+  onClose?: () => void;
   /** Extra line under the status, e.g. "Noah Call · $0.05/min". */
   subtitle?: string;
   theme?: CallUITheme;
   labels?: CallLabels;
   /** Show the landmark credit line (required by most Creative Commons licences). Default true. */
-  showAttribution?: boolean;
   blurRadius?: number;
   /** Show the Hold button. Default false; hold needs SBC support for re-INVITE (sendonly/recvonly). */
   showHold?: boolean;
+  /** Shown as a small badge in the top-right corner, e.g. a security notice. */
+  notice?: React.ReactNode;
+  /** Reserved space above the controls, e.g. for an ad. */
+  footer?: React.ReactNode;
 }
 
 export function ActiveCallScreen({
@@ -46,26 +59,36 @@ export function ActiveCallScreen({
   isSpeakerOn,
   onToggleSpeaker,
   onMinimize,
-  subtitle,
+  onClose,
   theme = defaultCallUITheme,
   labels = defaultLabels,
-  showAttribution = true,
-  blurRadius,
   showHold = false,
+  notice,
+  footer,
 }: ActiveCallScreenProps) {
   const insets = useSafeAreaInsets();
+  const topInset = useTopInset();
   const { state, isMuted, isOnHold } = useCallState(call);
   const duration = useCallDuration(call);
   const [keypadOpen, setKeypadOpen] = useState(false);
   const [dtmf, setDtmf] = useState("");
+  // Keys shrink to fit the space left between the identity block and the controls.
+  const [padSpace, setPadSpace] = useState(0);
+  const onSpaceLayout = useCallback((e: LayoutChangeEvent) => setPadSpace(e.nativeEvent.layout.height), []);
+  const keySize = Math.min(
+    DEFAULT_KEY_SIZE,
+    Math.max(MIN_KEY_SIZE, Math.floor((padSpace - DIGITS_LINE_HEIGHT) / KEY_ROWS_FACTOR)),
+  );
 
   const number = phoneNumber ?? call.destination;
-  const live = state !== CallState.ENDED && state !== CallState.FAILED;
+  // Free app-to-app calls run between two Noah Call apps: there is no phone menu to send digits to, so no keypad.
+  const isFreeCall = call.metadata?.kind === "app";
+  // A call that connects closes the instant it ends (handled by the host), so this screen only ever shows
+  // a terminal state for one that never connected: the reason, with every control hidden but close.
+  const failed = state === CallState.FAILED;
   const inCall = state === CallState.ACTIVE || state === CallState.HELD;
   const pulsing = state === CallState.CONNECTING || state === CallState.RINGING || state === CallState.RECONNECTING;
-  // Stage in words (Calling… / Ringing… / Connected / On hold / Call ended), with the timer on its own line.
-  const phase = callPhase(state, { incoming: call.isIncoming, labels });
-  const showsTimer = inCall || (state === CallState.ENDED && duration > 0);
+  const phase = callPhase(state, { incoming: call.isIncoming, labels, reason: call.endReason });
   const phaseColor =
     state === CallState.FAILED
       ? theme.danger
@@ -88,8 +111,8 @@ export function ActiveCallScreen({
   }, [call]);
 
   return (
-    <LandmarkBackground landmark={landmark} blurRadius={blurRadius}>
-      <View style={[styles.container, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 16 }]}>
+    <LandmarkBackground landmark={landmark}>
+      <View style={[styles.container, { paddingTop: topInset + 12, paddingBottom: insets.bottom + 16 }]}>
         {/* Top bar */}
         <View style={styles.topBar}>
           {onMinimize ? (
@@ -116,13 +139,13 @@ export function ActiveCallScreen({
           ) : (
             <View />
           )}
-          <View style={styles.topButton} />
+          <View style={styles.noticeBadge}>{notice}</View>
         </View>
 
         {/* Identity: text sits on a frosted panel so it stays readable over any photo and as it fades. */}
         <View style={styles.identity}>
           {!keypadOpen && <Avatar name={displayName} pulsing={pulsing} textColor={theme.text} />}
-          <BlurView intensity={30} tint="dark" style={styles.identityPanel} testID="call-identity-panel">
+          <View style={styles.identityPanel} testID="call-identity-panel">
             {/* The destination leads: contact name, or the number itself when unknown. */}
             <Text
               style={[displayName === number ? styles.numberTitle : styles.name, { color: theme.text, fontFamily: theme.fontFamily }]}
@@ -144,96 +167,90 @@ export function ActiveCallScreen({
                 {phase}
               </Text>
             </View>
-            {showsTimer && (
+            {inCall && (
               <Text style={[styles.timer, { color: theme.text }]} testID="call-timer" accessibilityLabel={`Call duration ${formatDuration(duration)}`}>
                 {formatDuration(duration)}
               </Text>
             )}
-            {!!subtitle && <Text style={[styles.subtitle, { color: theme.textSecondary }]}>{subtitle}</Text>}
-          </BlurView>
+          </View>
         </View>
 
-        <View style={styles.spacer}>
-          {keypadOpen && <DialPad onPress={onDigit} entered={dtmf} theme={theme} />}
-        </View>
+        {/* Scrolls only if even the smallest keys do not fit, so the pad never overlaps the identity or controls. */}
+        <ScrollView style={styles.spacer} contentContainerStyle={styles.spacerContent} onLayout={onSpaceLayout}>
+          {keypadOpen && <DialPad onPress={onDigit} entered={dtmf} theme={theme} keySize={keySize} />}
+        </ScrollView>
 
-        {/* Controls panel */}
-        <BlurView intensity={40} tint={theme.panelTint} style={styles.panel}>
-          <View style={styles.controlsRow}>
-            <ControlButton
-              testID="call-speaker"
-              icon={isSpeakerOn ? "volume-high" : "volume-medium-outline"}
-              label={labels.speaker}
-              active={isSpeakerOn}
-              onPress={onToggleSpeaker}
-              disabled={!live}
-              theme={theme}
-            />
-            <ControlButton
-              testID="call-mute"
-              icon={isMuted ? "mic-off" : "mic-outline"}
-              label={labels.mute}
-              active={isMuted}
-              onPress={() => call.toggleMute()}
-              disabled={!live}
-              theme={theme}
-            />
-            <ControlButton
-              testID="call-keypad"
-              icon={keypadOpen ? "close" : "keypad-outline"}
-              label={keypadOpen ? labels.hide : labels.keypad}
-              active={keypadOpen}
-              onPress={() => setKeypadOpen((o) => !o)}
-              disabled={!inCall}
-              theme={theme}
-            />
-            {showHold && (
+        {footer}
+
+        {/* A call that never connected hides every control but close: nothing else is actionable. */}
+        <View style={styles.panel}>
+          {!failed && (
+            <View style={styles.controlsRow}>
               <ControlButton
-                testID="call-hold"
-                icon={isOnHold ? "play" : "pause"}
-                label={isOnHold ? labels.resume : labels.hold}
-                active={isOnHold}
-                onPress={() => call.toggleHold().catch(() => {})}
+                testID="call-speaker"
+                icon={isSpeakerOn ? "volume-high" : "volume-medium-outline"}
+                label={labels.speaker}
+                active={isSpeakerOn}
+                onPress={onToggleSpeaker}
+                theme={theme}
+              />
+              <ControlButton
+                testID="call-mute"
+                icon={isMuted ? "mic-off" : "mic-outline"}
+                label={labels.mute}
+                active={isMuted}
+                onPress={() => call.toggleMute()}
+                theme={theme}
+              />
+              {!isFreeCall && (
+              <ControlButton
+                testID="call-keypad"
+                icon={keypadOpen ? "close" : "keypad-outline"}
+                label={keypadOpen ? labels.hide : labels.keypad}
+                active={keypadOpen}
+                onPress={() => setKeypadOpen((o) => !o)}
                 disabled={!inCall}
                 theme={theme}
               />
+              )}
+              {showHold && (
+                <ControlButton
+                  testID="call-hold"
+                  icon={isOnHold ? "play" : "pause"}
+                  label={isOnHold ? labels.resume : labels.hold}
+                  active={isOnHold}
+                  onPress={() => call.toggleHold().catch(() => {})}
+                  disabled={!inCall}
+                  theme={theme}
+                />
+              )}
+            </View>
+          )}
+          <View style={styles.endRow}>
+            {failed ? (
+              <EndCallBar testID="call-close" label={labels.close ?? "Close"} icon="close" onPress={onClose ?? hangup} disabled={!onClose} theme={theme} />
+            ) : (
+              <EndCallBar testID="call-end" label={labels.end} onPress={hangup} theme={theme} />
             )}
           </View>
-          <View style={styles.endRow}>
-            <ControlButton
-              testID="call-end"
-              icon="call"
-              iconRotation={135}
-              label={labels.end}
-              variant="danger"
-              size={70}
-              onPress={hangup}
-              disabled={!live}
-              theme={theme}
-            />
-          </View>
-        </BlurView>
+        </View>
 
-        {showAttribution && landmark?.imageUrl && (
-          <Text style={styles.attribution} numberOfLines={1} testID="call-attribution">
-            📍 {landmark.landmark}, {landmark.city}
-            {landmark.author ? ` · Photo: ${landmark.author}` : ""}
-            {landmark.license ? ` (${landmark.license})` : ""}
-          </Text>
-        )}
       </View>
     </LandmarkBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, paddingHorizontal: 16 },
+  container: { flex: 1, paddingHorizontal: 24 },
   topBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", height: 44 },
   topButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+  noticeBadge: { alignItems: "flex-end", justifyContent: "center", minWidth: 44 },
   countryChip: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(0,0,0,0.35)",
+    backgroundColor: "rgba(0,0,0,0.34)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,255,255,0.14)",
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
@@ -241,38 +258,27 @@ const styles = StyleSheet.create({
   },
   flag: { fontSize: 16, marginRight: 6 },
   countryText: { fontSize: 13, fontWeight: "600" },
-  identity: { alignItems: "center", marginTop: 12 },
-  identityPanel: {
-    alignItems: "center",
-    alignSelf: "stretch",
-    marginTop: 12,
-    marginHorizontal: 8,
-    paddingHorizontal: 18,
-    paddingVertical: 14,
-    borderRadius: 24,
-    overflow: "hidden",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(255,255,255,0.18)",
-    // iOS blurs the photo behind; Android's BlurView doesn't here, so a denser tint keeps text readable.
-    backgroundColor: Platform.OS === "ios" ? "rgba(0,0,0,0.28)" : "rgba(0,0,0,0.5)",
-  },
-  name: { fontSize: 34, fontWeight: "800", letterSpacing: -0.5, textAlign: "center", maxWidth: "100%" },
-  numberTitle: { fontSize: 36, fontWeight: "800", letterSpacing: 0.5, textAlign: "center", maxWidth: "100%", fontVariant: ["tabular-nums"] },
-  number: { fontSize: 26, fontWeight: "700", marginTop: 4, letterSpacing: 0.5, fontVariant: ["tabular-nums"] },
+  identity: { alignItems: "center", marginTop: 16 },
+  identityPanel: { alignItems: "center", alignSelf: "stretch", marginTop: 8, paddingHorizontal: 8, gap: 4 },
+  name: { fontSize: 27, fontWeight: "700", textAlign: "center", maxWidth: "100%" },
+  numberTitle: { fontSize: 27, fontWeight: "700", textAlign: "center", maxWidth: "100%", fontVariant: ["tabular-nums"] },
+  number: { fontSize: 16, fontWeight: "500", fontVariant: ["tabular-nums"] },
   phaseRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 12 },
   phaseDot: { width: 10, height: 10, borderRadius: 5 },
-  phase: { fontSize: 24, fontWeight: "700", textAlign: "center" },
-  timer: { fontSize: 46, fontWeight: "800", marginTop: 4, letterSpacing: 1, fontVariant: ["tabular-nums"] },
-  subtitle: { fontSize: 15, fontWeight: "500", marginTop: 6, textAlign: "center" },
-  spacer: { flex: 1, justifyContent: "center" },
+  phase: { fontSize: 14, fontWeight: "600", textAlign: "center" },
+  timer: { fontSize: 28, fontWeight: "700", marginTop: 2, fontVariant: ["tabular-nums"] },
+  spacer: { flex: 1 },
+  spacerContent: { flexGrow: 1, justifyContent: "center", alignItems: "center" },
   panel: {
-    borderRadius: 32,
+    borderRadius: 22,
     overflow: "hidden",
-    paddingVertical: 20,
-    paddingHorizontal: 8,
-    backgroundColor: "rgba(20,20,20,0.35)",
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    backgroundColor: "rgba(20,20,26,0.46)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,255,255,0.1)",
   },
   controlsRow: { flexDirection: "row", justifyContent: "space-around" },
-  endRow: { alignItems: "center", marginTop: 18 },
+  endRow: { alignSelf: "stretch", marginTop: 16, alignItems: "center" },
   attribution: { color: "rgba(255,255,255,0.55)", fontSize: 10, textAlign: "center", marginTop: 10 },
 });
