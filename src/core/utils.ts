@@ -30,15 +30,17 @@ export function toSipUri(destination: string, domain: string): string {
 /** Map a final SIP response code to an end reason. */
 export function reasonFromStatusCode(code: number | undefined): CallEndReason {
   switch (code) {
+    // 603 Decline is the callee turning the call down: shown as busy, not as a failure.
     case 486:
     case 600:
-      return "busy";
-    case 408:
-    case 480:
-      return "no_answer";
-    case 403:
     case 603:
+      return "busy";
+    case 403:
       return "rejected";
+    // 408: the callee's phone did not answer the SIP call (offline, no internet, or rang out). Not a decline.
+    case 408:
+    // The SBC sends 480 when the callee's phone had no registration and did not wake in time.
+    case 480:
     case 404:
     case 410:
     case 484:

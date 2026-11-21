@@ -1,5 +1,5 @@
 export { Call } from "./core/Call";
-export type { CallInit } from "./core/Call";
+export type { CallInit, AnswerGate } from "./core/Call";
 export { SipVoiceClient } from "./core/SipVoiceClient";
 export type { SipVoiceClientDeps, SipVoiceClientEvents, PendingPushCall } from "./core/SipVoiceClient";
 export * from "./core/types";
@@ -14,15 +14,10 @@ export type {
 } from "./core/signaling";
 export { formatDuration, normalizePhoneNumber, toSipUri, uuidv4 } from "./core/utils";
 
-export { getNativeCallUI, NoopNativeCallUI } from "./native/NativeCallUI";
-export type {
-  AudioRoute,
-  NativeCallUI,
-  NativeCallUIConfig,
-  NativeCallUIEvents,
-  NativeEndReason,
-} from "./native/NativeCallUI";
-export { NativeCallCoordinator } from "./native/NativeCallCoordinator";
+export { getNativeCallCoordinator, NativeCallCoordinator } from "./native/NativeCallCoordinator";
+export type { NativeCallUIConfig } from "./native/NativeCallCoordinator";
+export { loadCallSystem } from "./native/callSystem";
+export type { CallSystem } from "./native/callSystem";
 
 export { SipVoiceProvider, useSipVoice } from "./react/SipVoiceProvider";
 export type { SipVoiceProviderProps, SipVoiceContextValue } from "./react/SipVoiceProvider";

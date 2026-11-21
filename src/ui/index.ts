@@ -14,6 +14,8 @@ export type {
 } from "./components/PreparingCallScreen";
 export { CallConfirmPanel } from "./components/CallConfirmPanel";
 export type { CallConfirmPanelProps } from "./components/CallConfirmPanel";
+export { RateCallSheet } from "./components/RateCallSheet";
+export type { RateCallSheetProps } from "./components/RateCallSheet";
 export type { MinimizedCallBannerProps } from "./components/MinimizedCallBanner";
 export { Avatar } from "./components/Avatar";
 export { ControlButton } from "./components/ControlButton";

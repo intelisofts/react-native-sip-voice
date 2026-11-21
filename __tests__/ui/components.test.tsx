@@ -41,27 +41,37 @@ describe("ActiveCallScreen", () => {
     return { call, session, onToggleSpeaker, onMinimize };
   }
 
-  it("shows name, number, country chip, landmark photo and credit", async () => {
+  it("shows name, number and country chip on the plain background, with no place name or photo", async () => {
     await renderScreen();
     expect(screen.getByTestId("call-name")).toHaveTextContent("Jane Doe");
     expect(screen.getByTestId("call-number")).toHaveTextContent("+447700900123");
     expect(screen.getByTestId("call-country-chip")).toHaveTextContent("🇬🇧United Kingdom");
-    expect(screen.getByTestId("landmark-image")).toBeTruthy();
-    expect(screen.getByTestId("call-attribution")).toHaveTextContent(/London Eye, London/);
+    expect(screen.queryByTestId("call-place")).toBeNull(); // no place name on the call screen
+    expect(screen.queryByTestId("landmark-image")).toBeNull();
+    // The place is named near the top, so the call feels tied to where the person is.
+    expect(screen.queryByTestId("call-landmark")).toBeNull(); // no point of interest: the flag chip only
+  });
+
+  it("shows the avatar on the plain background, even when a landmark is known", async () => {
+    await renderScreen();
+    expect(screen.getByTestId("call-avatar-initials")).toBeTruthy();
+  });
+
+  it("falls back to the initials avatar when there is no photo", async () => {
+    await renderScreen({ landmark: null });
     expect(screen.getByTestId("call-avatar-initials")).toHaveTextContent("JD");
   });
 
   it("shows the destination large, the stage in words, and a big bold timer once connected", async () => {
-    const { StyleSheet } = require("react-native");
-    const { act } = require("@testing-library/react-native");
+    const { StyleSheet } = jest.requireActual("react-native");
+    const { act } = jest.requireActual("@testing-library/react-native");
     const { call } = await renderScreen();
     expect(screen.getByTestId("call-identity-panel")).toBeTruthy();
     const style = (id: string) => StyleSheet.flatten(screen.getByTestId(id).props.style);
-    expect(style("call-name").fontSize).toBeGreaterThanOrEqual(34);
-    expect(style("call-number")).toMatchObject({ fontWeight: "700" });
-    expect(style("call-number").fontSize).toBeGreaterThanOrEqual(26);
+    expect(style("call-name").fontSize).toBeGreaterThanOrEqual(24);
+    expect(style("call-number").fontSize).toBeGreaterThanOrEqual(14);
     expect(screen.getByTestId("call-status")).toHaveTextContent("Calling…");
-    expect(style("call-status").fontSize).toBeGreaterThanOrEqual(24);
+    expect(style("call-status").fontSize).toBeGreaterThanOrEqual(14);
     expect(screen.queryByTestId("call-timer")).toBeNull();
 
     await act(async () => call.onRinging());
@@ -70,14 +80,14 @@ describe("ActiveCallScreen", () => {
     await act(async () => call.onAnswered());
     expect(screen.getByTestId("call-status")).toHaveTextContent("Connected");
     expect(screen.getByTestId("call-timer")).toHaveTextContent("00:00");
-    expect(style("call-timer")).toMatchObject({ fontWeight: "800" });
-    expect(style("call-timer").fontSize).toBeGreaterThanOrEqual(46);
+    expect(style("call-timer")).toMatchObject({ fontWeight: "700" });
+    expect(style("call-timer").fontSize).toBeGreaterThanOrEqual(28);
   });
 
   it("an unknown number is itself the big bold title", async () => {
-    const { StyleSheet } = require("react-native");
+    const { StyleSheet } = jest.requireActual("react-native");
     await renderScreen({ displayName: "+447700900123" });
-    expect(StyleSheet.flatten(screen.getByTestId("call-name").props.style)).toMatchObject({ fontSize: 36, fontWeight: "800" });
+    expect(StyleSheet.flatten(screen.getByTestId("call-name").props.style)).toMatchObject({ fontSize: 27, fontWeight: "700" });
   });
 
   it("hides the number when it equals the display name", async () => {
@@ -92,7 +102,9 @@ describe("ActiveCallScreen", () => {
     expect(screen.queryByTestId("call-attribution")).toBeNull();
   });
 
-  it("walks through Calling -> Ringing -> Connected + timer -> ended", async () => {
+  it("walks through Calling -> Ringing -> Connected + timer", async () => {
+    // A connected call that ends closes this screen immediately (CallOverlay), so this screen itself
+    // is never asked to render that case; it only ever shows a terminal state for one that never connected.
     jest.useFakeTimers({ now: 1_000 });
     const { call } = await renderScreen();
     expect(screen.getByTestId("call-status")).toHaveTextContent("Calling…");
@@ -101,9 +113,6 @@ describe("ActiveCallScreen", () => {
     await act(() => call.onAnswered());
     await act(() => jest.advanceTimersByTime(65_000));
     expect(screen.getByTestId("call-status")).toHaveTextContent("Connected");
-    expect(screen.getByTestId("call-timer")).toHaveTextContent("01:05");
-    await act(() => call.onEnded("remote_hangup"));
-    expect(screen.getByTestId("call-status")).toHaveTextContent("Call ended");
     expect(screen.getByTestId("call-timer")).toHaveTextContent("01:05");
   });
 
@@ -126,6 +135,13 @@ describe("ActiveCallScreen", () => {
     await fireEvent.press(screen.getByTestId("call-end"));
     expect(session.hangup).toHaveBeenCalled();
     expect(call.currentState).toBe(CallState.ENDED);
+  });
+
+  it("hides the keypad on a free app-to-app call, but keeps it on a phone call", async () => {
+    const free = makeCall({ direction: "outgoing", destination: "+447700900123", metadata: { kind: "app" } });
+    await render(<ActiveCallScreen call={free.call} displayName="Jane" landmark={london} isSpeakerOn={false} onToggleSpeaker={jest.fn()} />);
+    expect(screen.queryByTestId("call-keypad")).toBeNull();
+    expect(screen.getByTestId("call-mute")).toBeTruthy();
   });
 
   it("disables keypad and hold until answered", async () => {
@@ -165,22 +181,51 @@ describe("ActiveCallScreen", () => {
     expect(screen.queryByTestId("call-minimize")).toBeNull();
   });
 
-  it("disables all controls once ended", async () => {
+  it("hides every control but close once a call fails to connect", async () => {
     const { call } = await renderScreen();
-    await act(() => call.onEnded("remote_hangup"));
-    expect(screen.getByTestId("call-end")).toBeDisabled();
-    expect(screen.getByTestId("call-mute")).toBeDisabled();
+    await act(() => call.onEnded("no_answer"));
+    expect(screen.queryByTestId("call-end")).toBeNull();
+    expect(screen.queryByTestId("call-speaker")).toBeNull();
+    expect(screen.queryByTestId("call-mute")).toBeNull();
+    expect(screen.queryByTestId("call-keypad")).toBeNull();
+    expect(screen.getByTestId("call-close")).toBeTruthy();
   });
 
-  it("shows failure in the status line", async () => {
-    const { call } = await renderScreen();
-    await act(() => call.onEnded("busy", 486));
+  it("the close button is disabled without an onClose handler, and calls it when given one", async () => {
+    const onClose = jest.fn();
+    const { call } = await renderScreen({ onClose });
+    await act(() => call.onEnded("no_answer"));
+    expect(screen.getByTestId("call-close").props.accessibilityState?.disabled).toBe(false);
+    await fireEvent.press(screen.getByTestId("call-close"));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows a specific message for busy, declined and no-answer instead of a generic failure", async () => {
+    const busy = await renderScreen();
+    await act(() => busy.call.onEnded("busy", 486));
+    expect(screen.getByTestId("call-status")).toHaveTextContent("They're busy right now");
+
+    // 603 Decline is shown as busy, so it is never reported as a failed call.
+    const declinedAsBusy = await renderScreen();
+    await act(() => declinedAsBusy.call.onEnded("busy", 603));
+    expect(screen.getByTestId("call-status")).toHaveTextContent("They're busy right now");
+
+    const declined = await renderScreen();
+    await act(() => declined.call.onEnded("rejected"));
+    expect(screen.getByTestId("call-status")).toHaveTextContent("Call declined");
+
+    const noAnswer = await renderScreen();
+    await act(() => noAnswer.call.onEnded("no_answer", 408));
+    expect(screen.getByTestId("call-status")).toHaveTextContent("No answer");
+
+    const failed = await renderScreen();
+    await act(() => failed.call.onEnded("failed"));
     expect(screen.getByTestId("call-status")).toHaveTextContent("Call failed");
   });
 
-  it("renders a subtitle and custom labels", async () => {
-    await renderScreen({ subtitle: "$0.05/min", labels: { ...require("../../src/ui/labels").defaultLabels, end: "Raccrocher" } });
-    expect(screen.getByText("$0.05/min")).toBeTruthy();
+  it("renders custom labels and leaves out the extra subtitle line", async () => {
+    await renderScreen({ subtitle: "$0.05/min", labels: { ...jest.requireActual("../../src/ui/labels").defaultLabels, end: "Raccrocher" } });
+    expect(screen.queryByText("$0.05/min")).toBeNull(); // details removed from the active call screen
     expect(screen.getByText("Raccrocher")).toBeTruthy();
   });
 });
@@ -190,7 +235,9 @@ describe("IncomingCallScreen", () => {
     const { call, session } = makeCall({ direction: "incoming", initialState: CallState.RINGING, destination: "+33123456789" });
     await render(<IncomingCallScreen call={call} displayName="Marie" landmark={resolveLandmark("+33123456789")} />);
     expect(screen.getByTestId("incoming-name")).toHaveTextContent("Marie");
-    expect(screen.getByText("🇫🇷 France")).toBeTruthy();
+    // Same calm layout as the active call: country pill in the top row, then the place.
+    expect(screen.getByTestId("incoming-country-chip")).toHaveTextContent(/France/);
+    expect(screen.queryByTestId("incoming-landmark")).toBeNull();
     await fireEvent.press(screen.getByTestId("incoming-accept"));
     expect(session.answer).toHaveBeenCalled();
   });
@@ -244,10 +291,8 @@ describe("Avatar", () => {
 });
 
 describe("LandmarkBackground", () => {
-  it("falls back to the gradient when the image fails to load", async () => {
+  it("draws a plain country-tinted gradient and never a photo", async () => {
     await render(<LandmarkBackground landmark={london} />);
-    const img = screen.getByTestId("landmark-image");
-    await act(() => img.props.onError());
     expect(screen.queryByTestId("landmark-image")).toBeNull();
     expect(screen.getByTestId("landmark-background")).toBeTruthy();
   });

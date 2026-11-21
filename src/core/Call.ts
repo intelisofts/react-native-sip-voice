@@ -12,7 +12,20 @@ export interface CallInit {
   metadata?: Record<string, unknown>;
   initialState?: CallState;
   now?: () => number;
+  /** Looked up when the call is answered, so a gate set after the call arrived still applies. */
+  getAnswerGate?: () => AnswerGate | undefined;
 }
+
+/**
+ * Runs when the user accepts an incoming call, before it is answered. Return true to answer, false to
+ * give the call up (for example another of the user's devices already took it). A rejected promise
+ * also gives the call up, so a call is never answered without the check having run.
+ */
+/**
+ * Decides whether an incoming call may be answered. `true` answers; `false` gives it up (answered elsewhere, ended);
+ * `"busy"` gives it up because this person is already on another call.
+ */
+export type AnswerGate = (call: Call) => boolean | "busy" | Promise<boolean | "busy">;
 
 const TERMINAL: ReadonlySet<CallState> = new Set([CallState.ENDED, CallState.FAILED]);
 
@@ -41,6 +54,7 @@ export class Call implements CallSessionEvents {
   private session?: CallSession;
   private pendingHangup = false;
   private readonly now: () => number;
+  private readonly getAnswerGate?: () => AnswerGate | undefined;
   /** State to restore after RECONNECTING. */
   private stateBeforeReconnect?: CallState;
 
@@ -51,6 +65,7 @@ export class Call implements CallSessionEvents {
     this.displayName = init.displayName ?? init.destination;
     this.metadata = init.metadata ?? {};
     this.now = init.now ?? Date.now;
+    this.getAnswerGate = init.getAnswerGate;
     this.createdAt = this.now();
     if (init.initialState) this.state.next(init.initialState);
   }
@@ -114,9 +129,34 @@ export class Call implements CallSessionEvents {
 
   async answer(): Promise<void> {
     if (this.direction !== "incoming" || this.isTerminated) return;
-    if (!this.session) throw new Error("Call has no signalling session yet");
+    const session = this.session;
+    // No signalling session yet (the phone was asleep or offline when the call came in): it cannot be answered.
+    // End it here, which also ends the system call screen. Throwing left that screen connected with no audio.
+    if (!session) {
+      this.finish("failed");
+      return;
+    }
+
+    const gate = this.getAnswerGate?.();
+    if (gate) {
+      let decision: boolean | "busy" = false;
+      let refusal: CallEndReason = "answered_elsewhere";
+      try {
+        decision = await gate(this);
+      } catch {
+        refusal = "failed"; // could not check: do not answer without the check
+      }
+      if (this.isTerminated) return; // ended while the gate was deciding
+      if (decision === "busy") refusal = "busy";
+      if (decision !== true) {
+        this.finish(refusal);
+        await session.reject(refusal === "busy" ? 486 : undefined).catch(() => {});
+        return;
+      }
+    }
+
     this.state.next(CallState.CONNECTING);
-    await this.session.answer();
+    await session.answer();
   }
 
   async reject(): Promise<void> {
@@ -214,7 +254,14 @@ export class Call implements CallSessionEvents {
     if (this.isTerminated) return;
     this.endReason = reason;
     this.endedAt = this.now();
-    const failed = this.answeredAt === undefined && reason !== "local_hangup" && reason !== "remote_hangup" && reason !== "native_ui";
+    // An unanswered incoming call is a missed call, not a failure on this side: the callee did nothing
+    // wrong by not picking up, so it must not show the "call failed" screen the caller gets.
+    const failed =
+      !this.isIncoming &&
+      this.answeredAt === undefined &&
+      reason !== "local_hangup" &&
+      reason !== "remote_hangup" &&
+      reason !== "native_ui";
     this.state.next(failed ? CallState.FAILED : CallState.ENDED);
   }
 

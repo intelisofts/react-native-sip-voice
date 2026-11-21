@@ -1,6 +1,6 @@
 {
   "name": "react-native-sip-voice",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "Carrier-agnostic VoIP calling for React Native: SIP.js over WebSocket + react-native-webrtc audio, native CallKit (iOS) and ConnectionService (Android), and an optional WhatsApp-style call UI.",
   "main": "build/index.js",
   "types": "build/index.d.ts",
@@ -70,7 +70,8 @@
     "url": "https://github.com/your-github-user/react-native-sip-voice/issues"
   },
   "dependencies": {
-    "sip.js": "^0.21.2"
+    "sip.js": "^0.21.2",
+    "expo-callkit-telecom": "^1.0.1"
   },
   "peerDependencies": {
     "@expo/vector-icons": "*",

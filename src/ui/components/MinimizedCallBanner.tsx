@@ -1,7 +1,7 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useEffect, useRef } from "react";
 import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTopInset } from "../hooks/useTopInset";
 
 import type { Call } from "../../core/Call";
 import { useCallDuration, useCallState } from "../../react/hooks";
@@ -27,7 +27,7 @@ export function MinimizedCallBanner({
   theme = defaultCallUITheme,
   labels = defaultLabels,
 }: MinimizedCallBannerProps) {
-  const insets = useSafeAreaInsets();
+  const topInset = useTopInset();
   const { state, isMuted } = useCallState(call);
   const duration = useCallDuration(call);
   const blink = useRef(new Animated.Value(1)).current;
@@ -50,7 +50,7 @@ export function MinimizedCallBanner({
       accessibilityLabel={`${labels.tapToReturn}. ${displayName}`}
       onPress={onPress}
       onLayout={(e) => onHeight?.(e.nativeEvent.layout.height)}
-      style={[styles.banner, { backgroundColor: theme.accent, paddingTop: insets.top + 4 }]}
+      style={[styles.banner, { backgroundColor: theme.accent, paddingTop: topInset + 4 }]}
     >
       <View style={styles.row}>
         <Animated.View style={[styles.dot, { opacity: blink }]} />
@@ -59,7 +59,7 @@ export function MinimizedCallBanner({
         </Text>
         {isMuted && <Ionicons name="mic-off" size={14} color="#fff" style={styles.icon} />}
         <Text style={styles.time} testID="minimized-call-status">
-          {statusText(state, duration, { incoming: call.isIncoming, labels })}
+          {statusText(state, duration, { incoming: call.isIncoming, labels, reason: call.endReason })}
         </Text>
       </View>
     </Pressable>

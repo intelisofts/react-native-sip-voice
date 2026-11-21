@@ -135,8 +135,29 @@ describe("Call", () => {
     const other = makeCall({ direction: "incoming", initialState: CallState.RINGING });
     await other.call.reject();
     expect(other.session.reject).toHaveBeenCalled();
-    expect(other.call.currentState).toBe(CallState.FAILED);
+    // Declining is this device's own choice, like hanging up: no failure screen for it.
+    expect(other.call.currentState).toBe(CallState.ENDED);
     expect(other.call.endReason).toBe("rejected");
+  });
+
+  it("an incoming call nobody answers in time is a missed call, not a failure", () => {
+    const { call } = makeCall({ direction: "incoming", initialState: CallState.RINGING });
+    call.onEnded("no_answer", 408);
+    expect(call.currentState).toBe(CallState.ENDED);
+    expect(call.endReason).toBe("no_answer");
+  });
+
+  it("an incoming call answered elsewhere, from this device's side, is not a failure either", () => {
+    const { call } = makeCall({ direction: "incoming", initialState: CallState.RINGING });
+    call.onEnded("answered_elsewhere");
+    expect(call.currentState).toBe(CallState.ENDED);
+  });
+
+  it("an incoming call accepted before its signalling session exists ends instead of hanging connected", async () => {
+    const call = new Call({ direction: "incoming", destination: "+447700900123", initialState: CallState.RINGING });
+    await call.answer();
+    expect(call.currentState).toBe(CallState.ENDED);
+    expect(call.endReason).toBe("failed");
   });
 
   it("outgoing calls ignore answer()", async () => {

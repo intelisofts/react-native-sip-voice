@@ -1,10 +1,4 @@
 {
-  "platforms": ["apple", "android"],
-  "apple": {
-    "modules": ["SipVoiceModule"],
-    "appDelegateSubscribers": ["SipVoiceAppDelegateSubscriber"]
-  },
-  "android": {
-    "modules": ["expo.modules.sipvoice.SipVoiceModule"]
-  }
+  "platforms": ["android"],
+  "android": {}
 }

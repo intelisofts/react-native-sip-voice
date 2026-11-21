@@ -9,7 +9,8 @@ export interface CallSession {
   readonly sipCallId?: string;
   hangup(): Promise<void>;
   answer(): Promise<void>;
-  reject(): Promise<void>;
+  /** Turn down an incoming call: 603 Decline by default, 486 Busy Here when already on another call. */
+  reject(statusCode?: 486 | 603): Promise<void>;
   setMuted(muted: boolean): void;
   setHold(hold: boolean): Promise<void>;
   sendDtmf(tone: string): Promise<void>;

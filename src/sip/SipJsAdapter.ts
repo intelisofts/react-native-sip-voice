@@ -22,6 +22,10 @@ import { ensureWebRTCGlobals, reactNativeMediaStreamFactory } from "./media";
 
 const DEFAULT_ICE_SERVERS = [{ urls: "stun:stun.l.google.com:19302" }];
 
+// Enough time for the BYE/CANCEL/reject to actually leave the socket before the app may close it;
+// not long enough to make a hang-up feel slow if the network never replies.
+const HANGUP_SIGNAL_TIMEOUT_MS = 1500;
+
 /** Header lines that carry a bearer token, or `[]` for digest credentials. */
 export function tokenHeaderLines(credentials: SipCredentials): string[] {
   if (credentials.type !== "token") return [];
@@ -128,6 +132,23 @@ export class SipJsAdapter implements SignalingAdapter {
   }
 
   /**
+   * Re-REGISTERs on the open WebSocket with new credentials (e.g. a fresh single-use token), without reconnecting.
+   * SIP.js keeps these headers for its own later refreshes too.
+   */
+  async refreshRegistration(credentials: SipCredentials): Promise<void> {
+    if (!this.registerer || !this.isConnected()) throw new Error("Not registered");
+    this.credentials = credentials;
+    await this.registerer.register({ requestOptions: { extraHeaders: tokenHeaderLines(credentials) } });
+  }
+
+  /** Sends REGISTER with expiry 0 so the SBC stops delivering calls to this device. */
+  async unregister(): Promise<void> {
+    if (!this.registerer || !this.credentials) return;
+    // SIP.js unregister() drops the constructor's extraHeaders, so the token must be passed again or the SBC rejects it.
+    await this.registerer.unregister({ requestOptions: { extraHeaders: tokenHeaderLines(this.credentials) } });
+  }
+
+  /**
    * Closes the WebSocket immediately. The user agent is stopped afterwards in the background; with the
    * transport already down it sends nothing (no un-REGISTER, no BYE) and waits for nothing.
    */
@@ -199,6 +220,8 @@ export class SipJsAdapter implements SignalingAdapter {
         new SipJsCallSession(invitation, events, dtmfMode, this.log),
     };
     this.events?.onIncomingInvite(invite);
+    // 180 Ringing: tells the caller this phone is actually ringing now (otherwise it only learns on answer)
+    if (invitation.state === SessionState.Initial) invitation.progress().catch((e) => this.log.debug("180 not sent", e));
   }
 }
 
@@ -249,7 +272,13 @@ export class SipJsCallSession implements CallSession {
       case SessionState.Terminated:
         if (this.ended) return;
         this.ended = true;
-        this.events.onEnded(this.endReason(), this.rejectedCode);
+        // SIP.js moves an Inviter to Terminated *before* it calls our onReject delegate with the final response
+        // (603, 486 ...). When the reason isn't known yet, report the end after that delegate has run.
+        if (this.localHangup || this.wasEstablished || this.rejectedCode) {
+          this.events.onEnded(this.endReason(), this.rejectedCode);
+        } else {
+          void Promise.resolve().then(() => this.events.onEnded(this.endReason(), this.rejectedCode));
+        }
         break;
       default:
         break;
@@ -264,21 +293,34 @@ export class SipJsCallSession implements CallSession {
   }
 
   /**
-   * Best-effort BYE (answered) / CANCEL (ringing) / reject (incoming), sent without waiting for the SBC's
-   * reply; the app closes the WebSocket right after and the SBC ends the dialog when the socket closes.
+   * BYE (answered) / CANCEL (ringing) / reject (incoming). Waited on (briefly) rather than fired-and-forgotten:
+   * the app tears down the connection right after this resolves, and a BYE still in flight when the socket
+   * closes never reaches the SBC, leaving the other side "connected" with nothing to tell it otherwise. A
+   * short timeout caps the wait so a slow or absent reply can never hang the UI's own hang-up.
    */
   async hangup(): Promise<void> {
     this.localHangup = true;
     const s = this.session;
     const ignore = (e: unknown) => this.log.debug("Hangup signalling not sent", e);
+    const withDeadline = (p: Promise<unknown>) => {
+      let timer: ReturnType<typeof setTimeout>;
+      const deadline = new Promise((resolve) => {
+        timer = setTimeout(resolve, HANGUP_SIGNAL_TIMEOUT_MS);
+      });
+      return Promise.race([p, deadline]).catch(ignore).finally(() => clearTimeout(timer));
+    };
     switch (s.state) {
       case SessionState.Initial:
       case SessionState.Establishing:
-        if (s instanceof Inviter) void s.cancel().catch(ignore);
-        else if (s instanceof Invitation) void s.reject().catch(ignore);
+        if (s instanceof Inviter) await withDeadline(s.cancel());
+        // Hanging up a call still ringing here is declining it: 603, not sip.js's default 480, which the SBC
+        // uses for "the phone could not be reached".
+        else if (s instanceof Invitation) await withDeadline(s.reject({ statusCode: 603 }));
         break;
       case SessionState.Established:
-        void s.bye().catch(ignore);
+        // The SBC requires the caller's call token on in-dialog requests; a BYE without it is refused (401)
+        // and never reaches the other side.
+        await withDeadline(s.bye({ requestOptions: { extraHeaders: [...this.tokenHeaders] } }));
         break;
       default:
         break;
@@ -292,10 +334,10 @@ export class SipJsCallSession implements CallSession {
     });
   }
 
-  async reject(): Promise<void> {
+  async reject(statusCode: 486 | 603 = 603): Promise<void> {
     this.localHangup = true;
     if (this.session instanceof Invitation && this.session.state === SessionState.Initial) {
-      await this.session.reject({ statusCode: 603 });
+      await this.session.reject({ statusCode });
     }
   }
 
