@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.0 (breaking)
+
+The native layer (CallKit, PushKit, ConnectionService, notifications, call screens, call audio session, FCM handling) is now [expo-callkit-telecom](https://expo-callkit-telecom.mfairley.com/), a peer dependency (`^1.0.1`). All Swift and Kotlin call code, the Headless JS task, `NativeCallUI`, `getNativeCallUI`, `NoopNativeCallUI`, `androidCallSetup` and `registerIncomingCallTask` are removed.
+
+- `NativeCallCoordinator` drives expo-callkit-telecom. A call announced by VoIP push keeps the system's call id, and its SIP INVITE (matched on the push's `serverCallId` = `X-Call-Id`) takes it. Answer taps are fulfilled once media is up, or failed when this phone may not take the call. An Answer or Decline made before the INVITE arrives is applied when it does.
+- `SipVoiceProvider`: `native` prop replaced by `callSystem` (tests; `null` runs without system call UI). `nativeConfig` is now `{ supportsHolding }`.
+- `useAudioRoute()` returns `{ isSpeakerOn, setSpeaker, toggleSpeaker }`; routing between earpiece, Bluetooth and headset is the system's.
+- Config plugin applies expo-callkit-telecom (voice only, 45 s ring window) and registers `SipVoiceCallEventReceiver`, which posts to the push's `metadata.declineUrl` when a call is declined while the app is closed.
+- Push payloads change to expo-callkit-telecom's format (`incomingCall` object on iOS; `messageType` + JSON string on Android). Android's incoming call screen is now the system's, branded only by icon and strings.
+
 ## 0.3.0
 
 - `unregister()`: stops being reachable (REGISTER with expiry 0, then closes the connection). For when the app goes to the background. Does nothing and returns `false` while a call is live. A slow server never delays closing (1.5 s limit).
