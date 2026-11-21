@@ -70,7 +70,8 @@
     "url": "https://github.com/your-github-user/react-native-sip-voice/issues"
   },
   "dependencies": {
-    "sip.js": "^0.21.2"
+    "sip.js": "^0.21.2",
+    "expo-callkit-telecom": "^1.0.1"
   },
   "peerDependencies": {
     "@expo/vector-icons": "*",
@@ -81,8 +82,7 @@
     "react": "*",
     "react-native": "*",
     "react-native-safe-area-context": "*",
-    "react-native-webrtc": ">=118",
-    "expo-callkit-telecom": "^1.0.1"
+    "react-native-webrtc": ">=118"
   },
   "peerDependenciesMeta": {
     "@expo/vector-icons": {
@@ -110,7 +110,6 @@
     "@types/react": "~19.2.4",
     "expo": "~57.0.24",
     "expo-blur": "~57.0.3",
-    "expo-callkit-telecom": "^1.0.1",
     "expo-image": "~57.0.5",
     "expo-linear-gradient": "~57.0.2",
     "jest": "^30.5.2",

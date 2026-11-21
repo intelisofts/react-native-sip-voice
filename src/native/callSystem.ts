@@ -28,6 +28,9 @@ export type CallSystem = Pick<
   | "getAudioSession"
   | "setAudioSessionPortOverride"
   | "addAudioRouteChangedListener"
+  | "registerVoIPPush"
+  | "getVoIPPushToken"
+  | "addVoIPPushTokenUpdatedListener"
 >;
 
 export type { CallEndedReason, CallSession, IncomingCallEvent, AudioRoute as SystemAudioRoute } from "expo-callkit-telecom";
